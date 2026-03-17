@@ -546,7 +546,7 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
 </div>
 
 </div>
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPA_URL='https://fzqhznzstrxfrcvlupru.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6cWh6bnpzdHJ4ZnJjdmx1cHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MDc5ODksImV4cCI6MjA4OTI4Mzk4OX0.xgs6fFwRWuCWGOe22Bq_8MwwGelD3aYpKnevDPysOA8';
@@ -614,62 +614,38 @@ function parseJSON(raw) {
   try{return JSON.parse(s.replace(/,\s*([}\]])/g,'$1').replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":'))}catch(_){}
   throw new Error('JSON parse failed');
 }
-  // Função de navegação entre abas
-function go(id, el, label) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  const target = document.getElementById('tab-' + id);
-  if (target) target.classList.add('active');
-  if (el) el.classList.add('active');
-  const bc = document.getElementById('bc');
-  if (bc) bc.textContent = label || id;
-  if (id === 'refs') renderRefs();
-  if (id === 'cal') renderCal();
-  if (id === 'prompt') updCtx();
-}
-async function ai(prompt, maxTokens = 2000, retries = 2) {
-  if (!checkUsage()) return null;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
+async function ai(prompt,maxTokens=2000,retries=2){
+  if(!checkUsage()) return null;
+  for(let attempt=0;attempt<=retries;attempt++){
+    try{
+      // Get current session token to authenticate with proxy
       let authHeader = {};
-      const s = initSupa();
-      if (s) {
-        const { data } = await s.auth.getSession();
-        if (data?.session?.access_token) {
-          authHeader = { 'Authorization': 'Bearer ' + data.session.access_token };
+      try {
+        const s = initSupa();
+        if (s) {
+          const { data } = await s.auth.getSession();
+          if (data?.session?.access_token) {
+            authHeader = { 'Authorization': 'Bearer ' + data.session.access_token };
+          }
         }
-      }
-      const res = await fetch('api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
+      } catch(_) {}
+      const res=await fetch('/api/chat',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'Accept':'application/json',
+          'X-Requested-With':'XMLHttpRequest',
           ...authHeader
         },
-        body: JSON.stringify({ prompt, maxTokens })
+        body:JSON.stringify({prompt,maxTokens})
       });
-
-      if (!res.ok) {
-        if (res.status === 429 && attempt < retries) {
-          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
-          continue;
-        }
-        throw new Error(`API ${res.status}`);
-      }
-      const data = await res.json();
-      if (data.text) {
-        incrementUsage();
-        return data.text;
-      }
-        throw new Error('Resposta vazia');
-      }
-      throw new Error('Data text ausente');
-    } catch (e) {
-      console.error('AI Error:', e);
-      if (attempt === retries) throw e;
-      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
-    }
+      if(!res.ok){const e=await res.json().catch(()=>({}));if(res.status===429&&attempt<retries){await new Promise(r=>setTimeout(r,2000*(attempt+1)));continue;}throw new Error(`API ${res.status}`);}
+      const data=await res.json();
+      const text=data.text;
+      if(!text) throw new Error('Empty response');
+      incrementUsage();
+      return text;
+    }catch(e){if(attempt===retries)throw e;await new Promise(r=>setTimeout(r,1500*(attempt+1)));}
   }
 }
 // ── AUTH & USAGE SYSTEM ──────────────────────────────────────
