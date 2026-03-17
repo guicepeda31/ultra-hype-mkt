@@ -525,7 +525,7 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
       <button onclick="loginGoogle()" style="width:100%;padding:11px;border-radius:20px;border:1px solid var(--b);background:var(--sf);font-family:'Google Sans',sans-serif;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;color:var(--t)"><svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Entrar com Google</button><div style="text-align:center;font-size:12px;color:var(--t3);margin-bottom:14px">ou entre com email</div><div id="auth-switch">Não tem conta? <a onclick="switchAuthMode('register')" style="color:var(--blue);cursor:pointer">Criar conta</a></div>
     </div>
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--b);text-align:center;font-size:12px;color:var(--t3)">
-      Seus dados ficam salvos no seu navegador.<br>Plano gratuito: <strong style="color:var(--t2)">5 análises por mês</strong>.
+      Dados de sessão sensíveis ficam só nesta aba.<br>Plano gratuito: <strong style="color:var(--t2)">5 análises por mês</strong>.
     </div>
   </div>
 </div>
@@ -546,7 +546,7 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
 </div>
 
 </div>
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+<script>
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPA_URL='https://fzqhznzstrxfrcvlupru.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6cWh6bnpzdHJ4ZnJjdmx1cHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MDc5ODksImV4cCI6MjA4OTI4Mzk4OX0.xgs6fFwRWuCWGOe22Bq_8MwwGelD3aYpKnevDPysOA8';
@@ -556,11 +556,48 @@ function initSupa(){try{if(window.supabase&&!supa){supa=window.supabase.createCl
 const S={trends:null,ideias:null,moodboard:null,plano:null,tema_t:'',tema_i:'',tema_m:''};
 const selMap=new Map();
 let tcId=0,scVal=8,curType='video',curCat='video';
-let refs=JSON.parse(localStorage.getItem('uh-refs')||'[]');
-let hist=JSON.parse(localStorage.getItem('uh-hist')||'[]');
+
+// Storage split: sessão sensível em sessionStorage; preferências em localStorage
+const secureStore = window.sessionStorage;
+const prefStore   = window.localStorage;
+
+function sGet(key,fallback){
+  try{
+    const raw = secureStore.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  }catch(_){ return fallback; }
+}
+function sSet(key,value){
+  try{ secureStore.setItem(key, JSON.stringify(value)); }catch(_){}
+}
+function sRemove(key){
+  try{ secureStore.removeItem(key); }catch(_){}
+}
+function pGet(key,fallback){
+  try{
+    const raw = prefStore.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  }catch(_){ return fallback; }
+}
+function pSet(key,value){
+  try{ prefStore.setItem(key, JSON.stringify(value)); }catch(_){}
+}
+function safeText(s){
+  return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function safeUrl(u){
+  try{
+    if(!u) return '';
+    const url = new URL(String(u), window.location.origin);
+    return ['http:','https:'].includes(url.protocol) ? url.href : '';
+  }catch(_){ return ''; }
+}
+
+let refs=sGet('uh-refs',[]);
+let hist=sGet('uh-hist',[]);
 let calEv=[],calY=new Date().getFullYear(),calM=new Date().getMonth();
-let calManual=JSON.parse(localStorage.getItem('uh-cal-manual')||'[]');
-function saveManual(){localStorage.setItem('uh-cal-manual',JSON.stringify(calManual));}
+let calManual=pGet('uh-cal-manual',[]);
+function saveManual(){pSet('uh-cal-manual',calManual);}
 function openCalDay(ds){
   // populate modal
   document.getElementById('cal-day-date').textContent = new Date(ds+'T12:00:00').toLocaleDateString(lang==='en'?'en-US':'pt-BR',{weekday:'long',day:'numeric',month:'long'});
@@ -596,7 +633,7 @@ function delManualEv(ds,idx){
 function delManualEvModal(ds,globalIdx){
   if(globalIdx>-1){calManual.splice(globalIdx,1);saveManual();renderCal();openCalDay(ds);}
 }
-function setTheme(t){document.documentElement.setAttribute('data-theme',t);document.getElementById('tt-l').classList.toggle('on',t==='light');document.getElementById('tt-d').classList.toggle('on',t==='dark');localStorage.setItem('uh-theme',t)}
+function setTheme(t){document.documentElement.setAttribute('data-theme',t);document.getElementById('tt-l').classList.toggle('on',t==='light');document.getElementById('tt-d').classList.toggle('on',t==='dark');prefStore.setItem('uh-theme',t)}
 function go(id,el,label){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));document.getElementById('tab-'+id).classList.add('active');if(el)el.classList.add('active');document.getElementById('bc').textContent=label||id;if(id==='refs')renderRefs();if(id==='cal')renderCal();if(id==='prompt')updCtx()}
 function compartilhar(){navigator.clipboard.writeText('ultrahype.app');showToast('Link copiado!')}
 function sp(id,msg){document.getElementById(id).innerHTML=`<div class="spin-wrap"><div class="spin"></div><p>${msg}</p></div>`}
@@ -605,6 +642,7 @@ function isLight(hex){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3
 function esc(s){return(s||'').replace(/'/g,"&#39;").replace(/"/g,'&quot;')}
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
 async function cpText(text,btn){try{await navigator.clipboard.writeText(text);const o=btn.innerHTML;btn.innerHTML='✓ Copiado';showToast('Prompt copiado!');setTimeout(()=>btn.innerHTML=o,1800)}catch{showToast('Selecione o texto e pressione Ctrl+C')}}
+window.addEventListener('beforeunload',()=>{ try{ sRemove('uh-user'); sRemove('uh-usage'); }catch(_){} });
 // ── ROBUST AI — smart JSON parser + retry + usage gate ──────
 function parseJSON(raw) {
   let s = raw.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
@@ -650,8 +688,8 @@ async function ai(prompt,maxTokens=2000,retries=2){
 }
 // ── AUTH & USAGE SYSTEM ──────────────────────────────────────
 const USAGE_LIMIT=15;
-let currentUser=JSON.parse(localStorage.getItem('uh-user')||'null');
-function getUsageData(){const now=new Date(),day=`${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`,raw=JSON.parse(localStorage.getItem('uh-usage')||'{}');if(raw.month!==day)return{month:day,count:0};return raw;}
+let currentUser=sGet('uh-user',null);
+function getUsageData(){const now=new Date(),day=`${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`,raw=sGet('uh-usage',{});if(raw.month!==day)return{month:day,count:0};return raw;}
 async function checkUsage(){
   var d=getUsageData();
   if(d.count>=USAGE_LIMIT){showUsageModal();return false;}
@@ -675,7 +713,7 @@ async function checkUsage(){
 }
 async function incrementUsage(){
   var d=getUsageData();d.count=(d.count||0)+1;
-  localStorage.setItem('uh-usage',JSON.stringify(d));updUsageBadge();
+  sSet('uh-usage',d);updUsageBadge();
   if(!currentUser)return;
   var s=initSupa();if(!s)return;
   var r2=await s.auth.getUser();
@@ -740,25 +778,26 @@ async function submitAuth(){
 }
 function loginUser(user){
   // Rotaciona o session ID ao fazer login (previne session fixation)
-  localStorage.removeItem('uh-sid');
+  sRemove('uh-sid');
   currentUser=user;
-  localStorage.setItem('uh-user',JSON.stringify(user));
-  const ud=JSON.parse(localStorage.getItem(`uh-data-${user.email}`)||'{}');
+  sSet('uh-user',user);
+  const ud=sGet(`uh-data-${user.email}`,{});
   if(ud.refs)refs=ud.refs;if(ud.hist)hist=ud.hist;
   renderHist();renderRefs();updAuthUI();
 }
 async function logout(){
   var s=initSupa();if(s)await s.auth.signOut();
-  if(currentUser)localStorage.setItem('uh-data-'+currentUser.email,JSON.stringify({refs:refs,hist:hist}));
+  if(currentUser)sSet('uh-data-'+currentUser.email,{refs:refs,hist:hist});
   currentUser=null;
   // Limpa dados sensíveis de sessão do localStorage
-  localStorage.removeItem('uh-user');
-  localStorage.removeItem('uh-usage');
-  localStorage.removeItem('uh-sid');
+  sRemove('uh-user');
+  sRemove('uh-usage');
+  sRemove('uh-sid');
   // Limpa chaves de sessão do Supabase
   Object.keys(localStorage).forEach(k => {
     if(k.startsWith('sb-') || k.startsWith('supabase.auth')) localStorage.removeItem(k);
   });
+  try { sessionStorage.clear(); } catch(_) {}
   updAuthUI();
   showToast(lang==='pt'?'Saiu com sucesso':'Signed out');
 }
@@ -772,7 +811,7 @@ function updAuthUI(){
 }
 const SRCS={'Wikipedia Trending':'https://pt.wikipedia.org/wiki/Special:Search?search=','HackerNews':'https://hn.algolia.com/?q=','Google News':'https://news.google.com/search?q=','DuckDuckGo News':'https://duckduckgo.com/?q=','Reddit':'https://www.reddit.com/search/?q='};
 function slink(f,q){const u=(SRCS[f]||'https://www.google.com/search?q=')+encodeURIComponent(q);return`<a class="src-link" href="${u}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>${f}</a>`}
-function saveHist(tema){hist.unshift({id:Date.now(),tema,data:new Date().toISOString()});hist=hist.slice(0,12);localStorage.setItem('uh-hist',JSON.stringify(hist));renderHist()}
+function saveHist(tema){hist.unshift({id:Date.now(),tema,data:new Date().toISOString()});hist=hist.slice(0,12);sSet('uh-hist',hist);renderHist()}
 function renderHist(){const el=document.getElementById('nav-hist');if(!hist.length){el.innerHTML='<div style="font-size:12px;color:var(--t3);padding:4px 12px">Nenhuma pesquisa</div>';return}const c=['#1a73e8','#1e8e3e','#d93025','#f29900','#8430ce','#129eaf'];el.innerHTML=hist.slice(0,6).map((h,i)=>`<div class="nav-item" style="cursor:pointer" onclick="document.getElementById('inp-trends').value='${esc(h.tema)}';go('trends',document.getElementById('ni-trends'),'Radar de Trends');buscarTrends()"><div class="nav-dot" style="background:${c[i%c.length]}"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px">${h.tema}</span></div>`).join('')}
 renderHist();
 function updBar(){const n=selMap.size;document.getElementById('sel-n').textContent=n;document.getElementById('sel-bar').classList.toggle('on',n>0)}
@@ -813,10 +852,17 @@ const TOOL_URLS={'Sora (OpenAI)':'https://sora.com','Runway Gen-3':'https://runw
 function buildPrompt(tool,cat,ctx){const t=S.tema_t||S.tema_i||S.tema_m||'campanha de marketing';const idea=S.ideias?.[0];const mood=S.moodboard;const plano=S.plano;const paleta=mood?.paleta?.map(p=>p.hex).join(', ')||'tons quentes naturais';const conceito=mood?.conceito_visual||'editorial moderno';const bigIdea=plano?.posicionamento?.big_idea||idea?.tagline||`campanha sobre ${t}`;const tom=plano?.posicionamento?.tom_de_voz||'autêntico e próximo';const publico=plano?.posicionamento?.publico_primario||'público brasileiro';const palavras=mood?.palavras_visuais?.join(', ')||'autêntico, humano, contemporâneo';const prompts={video:{'Sora (OpenAI)':`Crie um vídeo publicitário cinematográfico de 15-30 segundos.\n\nCONCEITO: ${bigIdea}\nESTILO VISUAL: ${conceito}\nPALETA: ${paleta}\nTOM: ${tom}\nPÚBLICO: ${publico}\n\nCENA: Começa com close em detalhe relacionado ao tema "${t}", câmera abre lentamente revelando o contexto. Luz natural suave. Movimento de câmera fluido. Sem texto na tela.\n\nPalavras-chave de estilo: ${palavras}\n\nCONTEXTO DA CAMPANHA:\n${ctx}`,'Runway Gen-3':`[Runway Gen-3 Alpha — Text to Video]\n\nPrompt: ${idea?.descricao||`Cena publicitária para ${t}`}, ${conceito}, slow cinematic camera movement, shallow depth of field, ${paleta.split(',')[0]} dominant color, 24fps film look, golden hour lighting, authentic people, no text overlay\n\nStyle: ${palavras}\nCamera: Gentle dolly in / rack focus\nDuration: 4-6 seconds\nNegative: low quality, watermark, text\n\nCampaign: ${bigIdea}`,'Kling AI':`Kling AI — Geração de vídeo\n\nDescrição: ${idea?.descricao||`Campanha: ${bigIdea}`}\nEstilo: ${conceito}\nCores: ${paleta}\nMovimento: Cinematográfico lento\nDuração: 5-8 segundos\n\nBig Idea: ${bigIdea}\nTom: ${tom}`,'Pika Labs':`Pika — Campaign Video\n\n"${bigIdea}"\n\nVisual style: ${conceito}, warm and authentic\nColors: ${paleta}\nMotion: Slow pan, emotional depth\nSubject: ${idea?.descricao?.slice(0,100)||t}\nNegative: text overlay, busy background\n\nStyle: ${palavras}`,'Luma Dream Machine':`Luma Dream Machine\n\nScene: ${idea?.descricao||`Brand campaign for ${t}`}\nStyle: ${conceito}\nLighting: Soft natural, golden hour\nColor: ${paleta}\nCamera: Smooth tracking\nMood: ${tom}\n\nCampaign: ${bigIdea}`,'Hailuo AI':`Hailuo AI\n\nTema: ${t}\nConceito: ${bigIdea}\nEstilo: ${conceito}\nPaleta: ${paleta}\nDireção: ${tom}\nCena: ${idea?.descricao?.slice(0,100)||'cena publicitária emocional'}`},imagem:{'Midjourney v6':`${idea?.tagline||bigIdea}, ${conceito}, shot on analog film, ${paleta.split(',').slice(0,2).join(' and ')}, ${palavras}, professional advertising photography, Brazilian market, emotional and authentic, natural lighting --ar 16:9 --style raw --v 6.1\n\n[Cole apenas esta linha no Midjourney]\n\nCONTEXTO:\n${ctx}`,'DALL-E 3':`Crie uma imagem publicitária profissional.\n\nCONCEITO: ${bigIdea}\nESTILO: ${conceito}\nPALETA: ${paleta}\nCOMPOSIÇÃO: 16:9, espaço para texto\nILUMINAÇÃO: Natural suave\nTOM: ${tom}\nEVITAR: ${mood?.evitar?.join(', ')||'clichês'}\n\nEstilo: ${palavras}`,'Adobe Firefly':`Adobe Firefly\n\nAssunto: ${idea?.descricao?.slice(0,150)||bigIdea}\nEstilo: ${conceito}\nCores: ${paleta}\nProporção: 16:9\nPalavras-chave: ${palavras}\nEvitar: ${mood?.evitar?.join(', ')||'clichês'}\nUso comercial: Sim`,'Ideogram 2':`${bigIdea} — ${conceito}\n\n${idea?.copys?.[0]||t}\n\nStyle: ${conceito}, ${palavras}\nColors: ${paleta}\nAspect: 16:9\nTypography: ${mood?.tipografias?.[0]?.nome||'clean modern'}\nTone: ${tom}`,'Leonardo.Ai':`Leonardo.Ai\n\nPrompt: ${idea?.descricao||bigIdea}, ${conceito}, ${paleta}, advertising photography, ${palavras}, professional, Brazilian brand\n\nNegative: watermark, text, low quality\nModel: Photorealistic\nDimensions: 1920x1080`,'Stable Diffusion XL':`masterpiece, (advertising photography:1.3), ${conceito}, ${idea?.descricao||t}, (${palavras.replace(/,/g,':1.2,')}:1.2), soft natural lighting, ${paleta.split(',')[0]} color palette, cinematic, 8k\n\nNegative: (text:1.5), watermark, low quality, blurry`},ppt:{'Gamma':`Crie uma apresentação no Gamma.\n\nTÍTULO: ${bigIdea}\nESTILO: ${conceito}\nCORES: ${paleta}\nTOM: ${tom}\n\nESLIDES:\n1. Capa — "${bigIdea}"\n2. O Momento Cultural — trends e oportunidade\n3. A Oportunidade — insight central\n4. Nossa Proposta — 3 conceitos\n5. Direção Visual — paleta e referências\n6. Execução — fases e cronograma\n7. Canais — mix e formatos\n8. KPIs — métricas\n9. Próximos Passos\n\nDADOS:\n${ctx}`,'Tome':`Tome — Narrative Presentation\n\nTitle: ${bigIdea}\nAesthetic: ${conceito}\nColors: ${paleta}\nTone: ${tom}\n\nStory:\n→ O que está acontecendo (trends)\n→ A oportunidade\n→ Nossa resposta criativa\n→ Plano de execução\n→ O que medir\n\nData:\n${ctx}`,'Beautiful.ai':`Beautiful.ai\n\nTitle: "${bigIdea}"\nTheme: ${conceito}\nColor: ${paleta.split(',')[0]}\n\nSlides:\n1. Cover\n2. Contexto cultural\n3. Big Idea\n4. Conceitos (3 opções)\n5. Visual identity\n6. Roadmap\n7. Canais\n8. KPIs\n9. Next steps\n\nContent:\n${ctx}`,'Canva IA':`Canva Magic Design\n\nTema: ${bigIdea}\nEstilo: ${conceito}\nPaleta: ${paleta}\n\nSlides:\n1 (Capa): "${bigIdea}"\n2 (Contexto): ${(S.trends?.now||[]).map(t=>t.titulo).join(', ')||t}\n3 (Insight): ${S.plano?.posicionamento?.insight_central||'Insight'}\n4 (Proposta): ${idea?.titulo||'Conceito'}\n5 (Visual): ${palavras}\n6 (Plano): ${(S.plano?.fases||[]).map(f=>f.titulo).join(' → ')||'Fases'}`,'SlidesAI':`SlidesAI — Texto para slides:\n\nCAMPANHA: ${bigIdea}\n\nCONTEXTO: O tema "${t}" apresenta oportunidades no Brasil. ${S.trends?.resumo||''}\n\nCONCEITO: ${idea?.titulo||'Proposta'} — ${idea?.tagline||bigIdea}\n\nDIREÇÃO VISUAL: ${conceito}. Paleta: ${paleta}. Tom: ${tom}.\n\nEXECUÇÃO: ${(S.plano?.fases||[]).map(f=>`${f.fase}: ${f.titulo}`).join('. ')||'A definir.'}\n\nMÉTRICAS: ${(S.plano?.kpis||[]).map(k=>`${k.metrica}: ${k.meta}`).join(' | ')||'A definir.'}`},texto:{'ChatGPT':`Você é um redator criativo especialista em marketing brasileiro.\n\nCAMPANHA: ${bigIdea}\nPÚBLICO: ${publico}\nTOM: ${tom}\n\n[DEFINA O QUE QUER — exemplos:]\n• Copy para post Instagram\n• Série de 5 posts\n• Email marketing\n• Script de vídeo 30s\n• Headlines para Google Ads\n\nCONTEXTO:\n${ctx}`,'Claude':`Você é um estrategista criativo especializado no mercado brasileiro.\n\nProjeto: ${bigIdea}\nTom: ${tom}\nPúblico: ${publico}\n\n[ESPECIFIQUE — exemplos:]\n• Refinar os conceitos criativos\n• 10 variações de headline A/B\n• Script completo TVC 30s\n• Calendário detalhado de conteúdo\n\nCONTEXTO ULTRA HYPE:\n${ctx}`,'Gemini':`Contexto de campanha:\n\nProjeto: ${bigIdea}\nMercado: Brasil\nPúblico: ${publico}\nTom: ${tom}\n\n${ctx}\n\nTarefa:\n[DEFINA O QUE PRECISA]`,'Perplexity':`Pesquise informações atualizadas para complementar uma campanha.\n\nTema: ${t}\nBig Idea: ${bigIdea}\nPúblico: ${publico}\n\nPesquise:\n1. Últimas notícias sobre "${t}" no Brasil\n2. Marcas trabalhando este tema\n3. Dados de comportamento de consumo\n4. Sensibilidades culturais a considerar\n\nContexto:\n${ctx}`,'Copy.ai':`Copy.ai — Campaign\n\nBrand: [Nome]\nCampaign: ${bigIdea}\nAudience: ${publico}\nTone: ${tom}\n\nGenerate:\n- 5 Instagram captions (PT-BR)\n- 3 email subjects\n- 10 ad headlines\n- 1 Facebook post\n- 3 CTA variations\n\nKey message: ${idea?.copys?.[0]||bigIdea}`}};return prompts[cat]?.[tool]||`Prompt para ${tool}\n\nCampanha: ${bigIdea}\nTema: ${t}\nTom: ${tom}\nPúblico: ${publico}\n\n${ctx}`}
 async function gerarPrompts(){const tools=[...document.querySelectorAll(`#ps-tools-${curCat} .ps-tool.on`)].map(t=>t.textContent.trim());if(!tools.length){showToast('Selecione pelo menos uma ferramenta');return}const btn=document.getElementById('btn-ps');btn.disabled=true;btn.textContent='Gerando…';const ctx=buildCtx();const cards=tools.map(tool=>{const prompt=buildPrompt(tool,curCat,ctx);const color=TOOL_COLORS[tool]||'#5f6368';const url=TOOL_URLS[tool]||'#';const initials=tool.split(' ').slice(0,2).map(w=>w[0]).join('');const tips={'Sora (OpenAI)':'Descreva cenas específicas. Sora entende composição cinematográfica.','Runway Gen-3':'Prompts curtos funcionam melhor. Adicione referências no final.','Midjourney v6':'Use --ar e --style. Coloque pesos com ::.','DALL-E 3':'Descreva estilo fotográfico, iluminação e composição.','Gamma':'Dê o conteúdo estruturado — o Gamma faz o layout.','ChatGPT':'Seja específico sobre formato de entrega. Peça variações numeradas.','Claude':'Inclua contexto de negócio. Ótimo para refinamento estratégico.'};const tip=tips[tool]||'Cole o prompt no campo de texto e ajuste conforme necessário.';return`<div class="ppc"><div class="ppc-hd"><div class="ppc-tool-ico" style="background:${color}">${initials}</div><div class="ppc-info"><div class="ppc-tool-name">${tool}</div><div class="ppc-tool-cat">${curCat==='video'?'Geração de vídeo':curCat==='imagem'?'Geração de imagem':curCat==='ppt'?'Apresentação com IA':'Texto e copy'}</div></div><div class="ppc-actions"><button class="ppc-copy-btn" onclick="cpText(this.closest('.ppc').querySelector('.ppc-prompt').textContent,this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar prompt</button><a class="ppc-open" href="${url}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>Abrir ${tool.split(' ')[0]}</a></div></div><div class="ppc-body"><div class="ppc-prompt">${prompt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div><div class="ppc-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span><strong>Dica:</strong> ${tip}</span></div></div></div>`});document.getElementById('out-ps').innerHTML=`<div class="ps-result">${cards.join('')}</div>`;btn.disabled=false;btn.textContent='Gerar Prompts Otimizados'}
 function updRefsCnt(){document.getElementById('refs-cnt').textContent=refs.length}
-function renderRefs(){const el=document.getElementById('refs-grid');el.innerHTML=refs.map((r,i)=>`<div class="rb"><div class="rb-type">${r.tipo}</div><div class="rb-title">${r.titulo}</div><div class="rb-desc">${r.notas||''}</div><div class="rb-foot"><span class="gtag gtag-d">${r.tag||''}</span><div style="display:flex;gap:4px">${r.url?`<a href="${r.url}" target="_blank" class="rb-del" style="opacity:1;color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>`:''}  <button class="rb-del" onclick="delRef(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button></div></div></div>`).join('')+`<button class="rb-add" onclick="document.getElementById('modal-ref').style.display='block'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Adicionar referência</span></button>`;updRefsCnt()}
-function delRef(i){refs.splice(i,1);localStorage.setItem('uh-refs',JSON.stringify(refs));renderRefs()}
+function renderRefs(){
+  const el=document.getElementById('refs-grid');
+  el.innerHTML=refs.map((r,i)=>{
+    const href=safeUrl(r.url);
+    return `<div class="rb"><div class="rb-type">${safeText(r.tipo)}</div><div class="rb-title">${safeText(r.titulo)}</div><div class="rb-desc">${safeText(r.notas||'')}</div><div class="rb-foot"><span class="gtag gtag-d">${safeText(r.tag||'')}</span><div style="display:flex;gap:4px">${href?`<a href="${href}" target="_blank" rel="noopener noreferrer" class="rb-del" style="opacity:1;color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>`:''}<button class="rb-del" onclick="delRef(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button></div></div></div>`;
+  }).join('')+`<button class="rb-add" onclick="document.getElementById('modal-ref').style.display='block'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Adicionar referência</span></button>`;
+  updRefsCnt();
+}
+function delRef(i){refs.splice(i,1);sSet('uh-refs',refs);renderRefs()}
 function closeModal(){document.getElementById('modal-ref').style.display='none'}
-function salvarRef(){const titulo=document.getElementById('mf-titulo').value.trim();if(!titulo)return;refs.push({titulo,tipo:document.getElementById('mf-tipo').value,url:document.getElementById('mf-url').value,notas:document.getElementById('mf-notas').value,tag:document.getElementById('mf-tag').value});localStorage.setItem('uh-refs',JSON.stringify(refs));closeModal();renderRefs();showToast('Referência salva!');['mf-titulo','mf-url','mf-notas','mf-tag'].forEach(id=>document.getElementById(id).value='')}
+function salvarRef(){const titulo=document.getElementById('mf-titulo').value.trim();if(!titulo)return;const url=safeUrl(document.getElementById('mf-url').value.trim());if(document.getElementById('mf-url').value.trim() && !url){showToast('URL inválida. Use http(s).');return;}refs.push({titulo,tipo:document.getElementById('mf-tipo').value,url,notas:document.getElementById('mf-notas').value,tag:document.getElementById('mf-tag').value});sSet('uh-refs',refs);closeModal();renderRefs();showToast('Referência salva!');['mf-titulo','mf-url','mf-notas','mf-tag'].forEach(id=>document.getElementById(id).value='')}
 renderRefs();
 function gerarEvCal(plano){calEv=[];const base=new Date();(plano.fases||[]).forEach((f,fi)=>{const start=new Date(base);start.setDate(base.getDate()+fi*14);calEv.push({data:start.toISOString().slice(0,10),texto:f.titulo,tipo:fi===0?'ev-b':fi===1?'ev-c':'ev-l'});(f.acoes||[]).forEach((a,ai)=>{const d=new Date(start);d.setDate(start.getDate()+ai*3);calEv.push({data:d.toISOString().slice(0,10),texto:a.slice(0,25),tipo:'ev-c'})})});(plano.kpis||[]).slice(0,2).forEach((k,i)=>{const d=new Date(base);d.setDate(base.getDate()+42+i*7);calEv.push({data:d.toISOString().slice(0,10),texto:k.metrica,tipo:'ev-r'})})}
 function gerarCalendario(){if(!S.plano){showToast('Gere um planejamento primeiro');return}gerarEvCal(S.plano);renderCal();showToast('Calendário gerado!')}
@@ -824,7 +870,7 @@ function navMes(d){calM+=d;if(calM<0){calM=11;calY--}if(calM>11){calM=0;calY++}r
 function renderCal(){const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];document.getElementById('cal-lbl').textContent=new Date(calY,calM,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});const primeiro=new Date(calY,calM,1).getDay();const total=new Date(calY,calM+1,0).getDate();const hoje=new Date().toISOString().slice(0,10);let html=dias.map(d=>`<div class="cal-dh">${d}</div>`).join('');for(let i=0;i<primeiro;i++)html+=`<div class="cal-day cal-empty"></div>`;for(let d=1;d<=total;d++){const ds=`${calY}-${String(calM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const evsDia=calEv.filter(e=>e.data===ds);html+=`<div class="cal-day${ds===hoje?' today':''}"><div class="cal-dn">${d}</div>${evsDia.map(e=>`<div class="cal-ev ${e.tipo}">${e.texto}</div>`).join('')}</div>`}document.getElementById('out-cal').innerHTML=`<div class="cal-grid">${html}</div>`}
 renderCal();
 // ── i18n ─────────────────────────────────────────
-let lang = localStorage.getItem('uh-lang') || 'pt';
+let lang = prefStore.getItem('uh-lang') || 'pt';
 
 const T = {
   pt: {
@@ -1065,7 +1111,7 @@ function t(key){ return T[lang][key] ?? T['pt'][key] ?? key; }
 
 function setLang(l) {
   lang = l;
-  localStorage.setItem('uh-lang', l);
+  prefStore.setItem('uh-lang', l);
   const ptBtn = document.getElementById('lang-pt');
   const enBtn = document.getElementById('lang-en');
   if (ptBtn && enBtn) {
@@ -1320,7 +1366,7 @@ gerarCalendario = function() {
 
 // Init lang on load
 (function initLang(){
-  const saved = localStorage.getItem('uh-lang');
+  const saved = prefStore.getItem('uh-lang');
   if(saved) lang = saved;
   setLang(lang);
 })();
@@ -1337,7 +1383,7 @@ window.addEventListener('error', e => {
 });
 
 // Auto-apply saved theme
-const savedTheme=localStorage.getItem('uh-theme');if(savedTheme){setTheme(savedTheme)}else if(window.matchMedia("(prefers-color-scheme: dark)").matches){setTheme("dark")}
+const savedTheme=prefStore.getItem('uh-theme');if(savedTheme){setTheme(savedTheme)}else if(window.matchMedia("(prefers-color-scheme: dark)").matches){setTheme("dark")}
 // Supabase auth — aguarda SDK carregar
 function _startSupaAuth(){
   var s=initSupa();
@@ -1348,7 +1394,7 @@ function _startSupaAuth(){
   });
   s.auth.onAuthStateChange(function(event,session){
     if(event==='SIGNED_IN'&&session){loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});closeLoginModal();}
-    if(event==='SIGNED_OUT'){currentUser=null;localStorage.removeItem('uh-user');updAuthUI();}
+    if(event==='SIGNED_OUT'){currentUser=null;sRemove('uh-user');updAuthUI();}
   });
 }
 window._onSupaReady=function(){_startSupaAuth();};
