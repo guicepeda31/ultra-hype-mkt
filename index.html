@@ -613,6 +613,19 @@ function parseJSON(raw) {
   try{return JSON.parse(s.replace(/,\s*([}\]])/g,'$1').replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":'))}catch(_){}
   throw new Error('JSON parse failed');
 }
+  // Função de navegação entre abas
+function go(id, el, label) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const target = document.getElementById('tab-' + id);
+  if (target) target.classList.add('active');
+  if (el) el.classList.add('active');
+  const bc = document.getElementById('bc');
+  if (bc) bc.textContent = label || id;
+  if (id === 'refs') renderRefs();
+  if (id === 'cal') renderCal();
+  if (id === 'prompt') updCtx();
+}
 async function ai(prompt, maxTokens = 2000, retries = 2) {
   if (!checkUsage()) return null;
   for (let attempt = 0; attempt <= retries; attempt++) {
