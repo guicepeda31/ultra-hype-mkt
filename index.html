@@ -467,14 +467,6 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
 const SUPA_URL='https://fzqhznzstrxfrcvlupru.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6cWh6bnpzdHJ4ZnJjdmx1cHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MDc5ODksImV4cCI6MjA4OTI4Mzk4OX0.xgs6fFwRWuCWGOe22Bq_8MwwGelD3aYpKnevDPysOA8';
 const supa=window.supabase.createClient(SUPA_URL,SUPA_KEY);
-supa.auth.getSession().then(function(r){
-  var session=r.data.session;
-  if(session)loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});
-});
-supa.auth.onAuthStateChange(function(event,session){
-  if(event==='SIGNED_IN'&&session){loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});closeLoginModal();}
-  if(event==='SIGNED_OUT'){currentUser=null;localStorage.removeItem('uh-user');updAuthUI();}
-});
 // ── STATE GLOBAL ──────────────────────────────────────────
 const S={trends:null,ideias:null,moodboard:null,plano:null,tema_t:'',tema_i:'',tema_m:''};
 const selMap=new Map();
@@ -1208,6 +1200,16 @@ gerarCalendario = function() {
 
 // Auto-apply saved theme
 const savedTheme=localStorage.getItem('uh-theme');if(savedTheme){setTheme(savedTheme)}else if(window.matchMedia("(prefers-color-scheme: dark)").matches){setTheme("dark")}
+// Supabase auth — roda depois de tudo carregado
+supa.auth.getSession().then(function(r){
+  var session=r.data.session;
+  if(session)loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});
+});
+supa.auth.onAuthStateChange(function(event,session){
+  if(event==='SIGNED_IN'&&session){loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});closeLoginModal();}
+  if(event==='SIGNED_OUT'){currentUser=null;localStorage.removeItem('uh-user');updAuthUI();}
+});
+
 </script>
 </body>
 </html>
