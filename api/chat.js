@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  api/chat.js — Ultra Hype  |  Defesa máxima em camadas v3
 // ══════════════════════════════════════════════════════════════════════════════
@@ -350,6 +352,61 @@ setInterval(() => {
     if (now - v.ts > JWT_CACHE_MS) jwtCache.delete(k);
 }, 600_000);
 
+
+
+// ── 7. Daily usage limit (server-authoritative via signed cookie) ───────────
+const DAILY_USAGE_LIMIT = 10;
+const USAGE_COOKIE_NAME = 'uh_usage_v1';
+const COOKIE_SECRET = process.env.LIMIT_SIGNING_SECRET || process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY || 'ultra-hype-default-secret';
+
+function dayKeyUTC() {
+  return new Date().toISOString().slice(0, 10);
+}
+function signUsagePayload(payload) {
+  return crypto.createHmac('sha256', COOKIE_SECRET).update(payload).digest('base64url');
+}
+function parseCookies(req) {
+  const raw = String(req.headers.cookie || '');
+  const out = {};
+  for (const part of raw.split(/;\s*/)) {
+    if (!part) continue;
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    out[part.slice(0, idx)] = part.slice(idx + 1);
+  }
+  return out;
+}
+function readUsageState(req) {
+  const cookies = parseCookies(req);
+  const raw = cookies[USAGE_COOKIE_NAME];
+  const today = dayKeyUTC();
+  if (!raw) return { day: today, count: 0 };
+  try {
+    const [payloadEnc, sig] = raw.split('.');
+    if (!payloadEnc || !sig) throw new Error('bad cookie');
+    const expected = signUsagePayload(payloadEnc);
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error('bad signature');
+    const json = Buffer.from(payloadEnc, 'base64url').toString('utf8');
+    const data = JSON.parse(json);
+    const count = Number(data.count) || 0;
+    const day = data.day === today ? data.day : today;
+    return { day, count: day === today ? Math.max(0, count) : 0 };
+  } catch {
+    return { day: today, count: 0 };
+  }
+}
+function writeUsageCookie(res, state) {
+  const payload = Buffer.from(JSON.stringify({ day: state.day, count: state.count }), 'utf8').toString('base64url');
+  const sig = signUsagePayload(payload);
+  const maxAge = 60 * 60 * 24 * 2;
+  res.setHeader('Set-Cookie', `${USAGE_COOKIE_NAME}=${payload}.${sig}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+}
+function usageResponseShape(state) {
+  return { limit: DAILY_USAGE_LIMIT, used: state.count, remaining: Math.max(0, DAILY_USAGE_LIMIT - state.count), period: 'day' };
+}
+
 // ── 7. Handler ────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
 
@@ -375,10 +432,10 @@ export default async function handler(req, res) {
   res.setHeader('X-Request-ID',                  reqId);
 
   // Helper — resposta de erro com delay mínimo para dificultar timing attacks
-  const deny = async (status, msg, delayMs = 0, extraHeaders = {}) => {
+  const deny = async (status, msg, delayMs = 0, extraHeaders = {}, extraBody = {}) => {
     if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
     Object.entries(extraHeaders).forEach(([k,v]) => res.setHeader(k, v));
-    return res.status(status).json({ error: msg, requestId: reqId });
+    return res.status(status).json({ error: msg, requestId: reqId, ...extraBody });
   };
 
   // 7.3 CORS
@@ -447,6 +504,13 @@ export default async function handler(req, res) {
   if (userId && checkRL('user', userId))
     return deny(429, 'Too many requests. Try again in a minute.', 200, { 'Retry-After': '60' });
 
+  // 7.12.1 Daily usage limit — source of truth on the server
+  const usageState = readUsageState(req);
+  if (usageState.count >= DAILY_USAGE_LIMIT) {
+    writeUsageCookie(res, usageState);
+    return deny(429, 'Daily limit reached. Try again tomorrow.', 0, { 'Retry-After': '3600' }, { code: 'daily_limit_reached', usage: usageResponseShape(usageState) });
+  }
+
   // 7.13 Valida body
   let prompt, maxTokens;
   try { ({ prompt, maxTokens = 1500 } = req.body || {}); }
@@ -484,7 +548,9 @@ export default async function handler(req, res) {
     const result = await provider.fn();
     if (result?.skipped) continue;
     if (result?.ok) {
-      return res.status(200).json({ text: result.text, provider: result.provider, model: result.model });
+      const nextUsageState = { day: usageState.day, count: usageState.count + 1 };
+      writeUsageCookie(res, nextUsageState);
+      return res.status(200).json({ text: result.text, provider: result.provider, model: result.model, usage: usageResponseShape(nextUsageState) });
     }
 
     lastFailure = result;
