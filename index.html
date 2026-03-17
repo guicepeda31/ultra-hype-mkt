@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Ultra Hype — Intelligence Criativo</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>window._supaReady=false;(function(){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";s.onload=function(){window._supaReady=true;if(window._onSupaReady)window._onSupaReady();};s.onerror=function(){console.log("Supabase SDK nao carregou - modo offline");};document.head.appendChild(s);})();</script>
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -339,6 +339,8 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
     <div class="nav-section-lbl">Organização</div>
     <div class="nav-item" id="ni-refs" onclick="go('refs',this,'Banco de Referências')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>Banco de Referências<span class="cnt" id="refs-cnt">0</span></div>
     <div class="nav-divider"></div>
+    <div class="nav-item" id="ni-contato" onclick="go('contato',this,'Contato')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Contato</div>
+    <div class="nav-divider"></div>
     <div class="nav-section-lbl" style="font-size:10px">Histórico</div>
     <div id="nav-hist"></div>
   </div>
@@ -378,6 +380,14 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
     <div id="tab-prompt" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Leve para qualquer IA</div><h1 class="page-title">Prompt <b>Studio</b></h1><p class="page-sub">Tudo que você construiu no Ultra Hype vira prompts otimizados prontos para copiar e colar na IA da sua escolha.</p></div><div class="ps-hero"><div class="ps-hero-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Como funciona</div><div class="ps-hero-sub"><strong>1.</strong> Escolha a categoria de IA &nbsp;<strong>2.</strong> Selecione as ferramentas &nbsp;<strong>3.</strong> Marque o contexto &nbsp;<strong>4.</strong> Gerar Prompts &nbsp;<strong>5.</strong> Copie e cole direto na ferramenta</div></div><div style="font-size:12px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Categoria de IA</div><div class="ps-cat-grid"><div class="ps-cat on" id="pscat-video" onclick="selPsCat('video')"><div class="ps-cat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div><div class="ps-cat-name">Vídeo</div><div class="ps-cat-sub">Sora, Runway, Kling</div></div><div class="ps-cat" id="pscat-imagem" onclick="selPsCat('imagem')"><div class="ps-cat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><div class="ps-cat-name">Imagem</div><div class="ps-cat-sub">Midjourney, DALL-E</div></div><div class="ps-cat" id="pscat-ppt" onclick="selPsCat('ppt')"><div class="ps-cat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><div class="ps-cat-name">Apresentação</div><div class="ps-cat-sub">Gamma, Tome, Canva</div></div><div class="ps-cat" id="pscat-texto" onclick="selPsCat('texto')"><div class="ps-cat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="13" y1="18" x2="3" y2="18"/></svg></div><div class="ps-cat-name">Texto & Copy</div><div class="ps-cat-sub">ChatGPT, Claude, Gemini</div></div></div><div style="font-size:12px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Ferramentas</div><div id="ps-tools-video" class="ps-tools"><span class="ps-tool on" onclick="this.classList.toggle('on')">Sora (OpenAI)</span><span class="ps-tool on" onclick="this.classList.toggle('on')">Runway Gen-3</span><span class="ps-tool" onclick="this.classList.toggle('on')">Kling AI</span><span class="ps-tool" onclick="this.classList.toggle('on')">Pika Labs</span><span class="ps-tool" onclick="this.classList.toggle('on')">Luma Dream Machine</span><span class="ps-tool" onclick="this.classList.toggle('on')">Hailuo AI</span></div><div id="ps-tools-imagem" class="ps-tools" style="display:none"><span class="ps-tool on" onclick="this.classList.toggle('on')">Midjourney v6</span><span class="ps-tool on" onclick="this.classList.toggle('on')">DALL-E 3</span><span class="ps-tool" onclick="this.classList.toggle('on')">Adobe Firefly</span><span class="ps-tool" onclick="this.classList.toggle('on')">Ideogram 2</span><span class="ps-tool" onclick="this.classList.toggle('on')">Leonardo.Ai</span><span class="ps-tool" onclick="this.classList.toggle('on')">Stable Diffusion XL</span></div><div id="ps-tools-ppt" class="ps-tools" style="display:none"><span class="ps-tool on" onclick="this.classList.toggle('on')">Gamma</span><span class="ps-tool on" onclick="this.classList.toggle('on')">Tome</span><span class="ps-tool" onclick="this.classList.toggle('on')">Beautiful.ai</span><span class="ps-tool" onclick="this.classList.toggle('on')">Canva IA</span><span class="ps-tool" onclick="this.classList.toggle('on')">SlidesAI</span></div><div id="ps-tools-texto" class="ps-tools" style="display:none"><span class="ps-tool on" onclick="this.classList.toggle('on')">ChatGPT</span><span class="ps-tool on" onclick="this.classList.toggle('on')">Claude</span><span class="ps-tool" onclick="this.classList.toggle('on')">Gemini</span><span class="ps-tool" onclick="this.classList.toggle('on')">Perplexity</span><span class="ps-tool" onclick="this.classList.toggle('on')">Copy.ai</span></div><div style="font-size:12px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;margin-top:4px">Incluir no contexto</div><div class="ps-ctx"><div class="ps-ctx-hd"><span class="ps-ctx-title">Análises do Ultra Hype</span><span style="font-size:12px;color:var(--t3)">Clique para ativar/desativar</span></div><div class="ps-ctx-item on" id="ctx-trends" onclick="this.classList.toggle('on')"><div class="ps-ctx-ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="ps-ctx-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/></svg></div><span class="ps-ctx-label">Trends analisadas</span><span class="ps-ctx-st" id="ctx-trends-st">nenhuma ainda</span></div><div class="ps-ctx-item on" id="ctx-ideias" onclick="this.classList.toggle('on')"><div class="ps-ctx-ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="ps-ctx-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><span class="ps-ctx-label">Ideias de campanha</span><span class="ps-ctx-st" id="ctx-ideias-st">nenhuma ainda</span></div><div class="ps-ctx-item on" id="ctx-mood" onclick="this.classList.toggle('on')"><div class="ps-ctx-ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="ps-ctx-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></div><span class="ps-ctx-label">Direção visual</span><span class="ps-ctx-st" id="ctx-mood-st">nenhuma ainda</span></div><div class="ps-ctx-item on" id="ctx-plano" onclick="this.classList.toggle('on')"><div class="ps-ctx-ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="ps-ctx-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><span class="ps-ctx-label">Planejamento estratégico</span><span class="ps-ctx-st" id="ctx-plano-st">nenhum ainda</span></div></div><button class="ps-gen" id="btn-ps" onclick="gerarPrompts()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Gerar Prompts Otimizados</button><div id="out-ps"></div></div></div>
     <div id="tab-refs" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>Acervo</div><h1 class="page-title">Banco de <b>Referências</b></h1><p class="page-sub">Salve campanhas, links e inspirações. Tudo disponível no Prompt Studio.</p></div><div id="refs-grid" class="refs-grid"></div></div></div>
     <div id="tab-cal" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="18" rx="2"/></svg>Planejamento</div><h1 class="page-title">Calendário <b>Editorial</b></h1><p class="page-sub">Visualize as ações do planejamento ao longo do tempo.</p></div><div class="cal-legend"><span class="cal-leg"><span class="cal-leg-dot ev-b"></span>Pesquisa</span><span class="cal-leg"><span class="cal-leg-dot ev-c"></span>Produção</span><span class="cal-leg"><span class="cal-leg-dot ev-l"></span>Lançamento</span><span class="cal-leg"><span class="cal-leg-dot ev-r"></span>Relatório</span></div><div class="cal-hd"><div class="cal-nav"><button class="cal-nav-btn" onclick="navMes(-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button><span class="cal-month-lbl" id="cal-lbl"></span><button class="cal-nav-btn" onclick="navMes(1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button></div><button class="gbutton" id="btn-cal-gen" style="margin:0" onclick="gerarCalendario()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.08-4.36"/></svg>Gerar do planejamento</button></div><div id="out-cal"></div></div></div>
+    <div id="tab-contato" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Vamos conversar</div><h1 class="page-title">Fale <b>Comigo</b></h1><p class="page-sub">Tem alguma dúvida, sugestão ou quer saber mais sobre o Ultra Hype? Escolha a melhor forma de entrar em contato.</p></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:32px">
+  <a href="https://www.linkedin.com/in/guilhermecepeda/" target="_blank" rel="noopener" style="text-decoration:none"><div class="gcard" style="padding:24px;text-align:center;cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='var(--sh2)'" onmouseout="this.style.boxShadow='var(--sh1)'"><div style="width:48px;height:48px;border-radius:12px;background:#0a66c2;display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg></div><div style="font-family:'Google Sans',sans-serif;font-size:15px;font-weight:500;color:var(--t);margin-bottom:4px">LinkedIn</div><div style="font-size:12px;color:var(--t3)">Guilherme Cepeda</div></div></a>
+  <a href="https://wa.me/5511941453938?text=Olá!%20Vi%20o%20Ultra%20Hype%20e%20gostaria%20de%20saber%20mais." target="_blank" rel="noopener" style="text-decoration:none"><div class="gcard" style="padding:24px;text-align:center;cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='var(--sh2)'" onmouseout="this.style.boxShadow='var(--sh1)'"><div style="width:48px;height:48px;border-radius:12px;background:#25d366;display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg></div><div style="font-family:'Google Sans',sans-serif;font-size:15px;font-weight:500;color:var(--t);margin-bottom:4px">WhatsApp</div><div style="font-size:12px;color:var(--t3)">(11) 94145-3938</div></div></a>
+  <div class="gcard" style="padding:24px;text-align:center"><div style="width:48px;height:48px;border-radius:12px;background:var(--blue);display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><div style="font-family:'Google Sans',sans-serif;font-size:15px;font-weight:500;color:var(--t);margin-bottom:4px">Email</div><div style="font-size:12px;color:var(--t3)">guilhermecarocia@gmail.com</div></div>
+</div>
+<div class="gcard" style="overflow:hidden"><div style="padding:20px 24px;border-bottom:1px solid var(--b)"><div style="font-family:'Google Sans',sans-serif;font-size:16px;font-weight:500;margin-bottom:4px">Envie uma mensagem</div><div style="font-size:13px;color:var(--t3)">Responderei em até 24 horas</div></div><div style="padding:20px 24px" id="contato-form"><div style="margin-bottom:14px"><label style="font-size:12px;font-weight:500;color:var(--t3);display:block;margin-bottom:5px">Seu nome</label><input id="ct-nome" type="text" placeholder="Como você se chama?" style="width:100%;padding:10px 14px;border:1px solid var(--b);border-radius:8px;font-family:'Roboto',sans-serif;font-size:13px;color:var(--t);background:var(--sf2);outline:none"/></div><div style="margin-bottom:14px"><label style="font-size:12px;font-weight:500;color:var(--t3);display:block;margin-bottom:5px">Seu email</label><input id="ct-email" type="email" placeholder="seu@email.com" style="width:100%;padding:10px 14px;border:1px solid var(--b);border-radius:8px;font-family:'Roboto',sans-serif;font-size:13px;color:var(--t);background:var(--sf2);outline:none"/></div><div style="margin-bottom:18px"><label style="font-size:12px;font-weight:500;color:var(--t3);display:block;margin-bottom:5px">Mensagem</label><textarea id="ct-msg" placeholder="Escreva sua mensagem..." style="width:100%;min-height:110px;resize:vertical;padding:10px 14px;border:1px solid var(--b);border-radius:8px;font-family:'Roboto',sans-serif;font-size:13px;color:var(--t);background:var(--sf2);outline:none;line-height:1.6"></textarea></div><button onclick="enviarContato()" class="gbutton" style="width:100%;justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Enviar mensagem</button></div></div>
+</div></div>
     <div id="tab-plano" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Gerado com IA</div><h1 class="page-title">Planejamento <b>Estratégico</b></h1><p class="page-sub">Posicionamento, fases, canais, KPIs e próximos passos.</p></div><div id="plano-themes"></div><div id="out-plano"><div class="spin-wrap"><div class="spin"></div><p>Gerando planejamento...</p></div></div></div></div>
   </div>
 </div>
@@ -466,7 +476,8 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPA_URL='https://fzqhznzstrxfrcvlupru.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6cWh6bnpzdHJ4ZnJjdmx1cHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MDc5ODksImV4cCI6MjA4OTI4Mzk4OX0.xgs6fFwRWuCWGOe22Bq_8MwwGelD3aYpKnevDPysOA8';
-const supa=window.supabase.createClient(SUPA_URL,SUPA_KEY);
+let supa=null;
+function initSupa(){try{if(window.supabase&&!supa){supa=window.supabase.createClient(SUPA_URL,SUPA_KEY);}}catch(e){}return supa;}
 // ── STATE GLOBAL ──────────────────────────────────────────
 const S={trends:null,ideias:null,moodboard:null,plano:null,tema_t:'',tema_i:'',tema_m:''};
 const selMap=new Map();
@@ -557,9 +568,11 @@ async function checkUsage(){
   if(d.count>=USAGE_LIMIT){showUsageModal();return false;}
   if(currentUser){
     var month=new Date().toISOString().slice(0,7);
-    var uid=(await supa.auth.getUser()).data.user&&(await supa.auth.getUser()).data.user.id;
+    var s=initSupa();if(!s)return true;
+    var gur=await s.auth.getUser();
+    var uid=gur.data&&gur.data.user&&gur.data.user.id;
     if(uid){
-      var r=await supa.from('user_usage').select('uses_this_month,month_key').eq('id',uid).maybeSingle();
+      var r=await s.from('user_usage').select('uses_this_month,month_key').eq('id',uid).maybeSingle();
       if(r.data&&r.data.month_key===month&&r.data.uses_this_month>=USAGE_LIMIT){showUsageModal();return false;}
     }
   }
@@ -569,11 +582,12 @@ async function incrementUsage(){
   var d=getUsageData();d.count=(d.count||0)+1;
   localStorage.setItem('uh-usage',JSON.stringify(d));updUsageBadge();
   if(!currentUser)return;
-  var r2=await supa.auth.getUser();
+  var s=initSupa();if(!s)return;
+  var r2=await s.auth.getUser();
   var user=r2.data&&r2.data.user;
   if(!user)return;
   var month=new Date().toISOString().slice(0,7);
-  await supa.from('user_usage').upsert({id:user.id,email:user.email,nome:currentUser.name,uses_this_month:d.count,month_key:month,updated_at:new Date().toISOString()},{onConflict:'id'});
+  await s.from('user_usage').upsert({id:user.id,email:user.email,nome:currentUser.name,uses_this_month:d.count,month_key:month,updated_at:new Date().toISOString()},{onConflict:'id'});
 }
 function getUsageLeft(){return Math.max(0,USAGE_LIMIT-getUsageData().count);}
 function updUsageBadge(){const left=getUsageLeft(),badge=document.getElementById('usage-badge');if(badge){badge.textContent=`${left} uso${left!==1?'s':''} restante${left!==1?'s':''}`;badge.style.color=left<=1?'var(--red)':left<=2?'var(--amber)':'var(--t3)';}}
@@ -602,29 +616,17 @@ async function submitAuth(){
   if(!email||!pass){showToast(isPT?'Preencha todos os campos':'Fill all fields');return;}
   btn.disabled=true;btn.textContent=isPT?'Aguarde...':'Loading...';
   if(mode==='register'){
-    var res=await supa.auth.signUp({email:email,password:pass,options:{data:{full_name:name||email.split('@')[0]}}});
+    var s=initSupa();if(!s){showToast('Carregando...');btn.disabled=false;return;}
+    var res=await s.auth.signUp({email:email,password:pass,options:{data:{full_name:name||email.split('@')[0]}}});
     if(res.error){showToast(res.error.message);btn.disabled=false;btn.textContent=isPT?'Criar conta':'Create account';return;}
     showToast(isPT?'Verifique seu email para confirmar':'Check your email to confirm');
     closeLoginModal();
   }else{
-    var res=await supa.auth.signInWithPassword({email:email,password:pass});
+    var s=initSupa();if(!s){showToast('Carregando...');btn.disabled=false;return;}
+    var res=await s.auth.signInWithPassword({email:email,password:pass});
     if(res.error){showToast(isPT?'Email ou senha incorretos':'Wrong email or password');btn.disabled=false;btn.textContent=isPT?'Entrar':'Sign in';return;}
   }
   btn.disabled=false;
-}
-  if(mode==='register'&&!name){showToast(isPT?'Digite seu nome':'Enter your name');return;}
-  const users=JSON.parse(localStorage.getItem('uh-users')||'{}');
-  if(mode==='register'){
-    if(users[email]){showToast(isPT?'E-mail já cadastrado':'Email already registered');return;}
-    const user={name:name||email.split('@')[0],email,pass:btoa(unescape(encodeURIComponent(pass))),created:Date.now()};
-    users[email]=user;localStorage.setItem('uh-users',JSON.stringify(users));
-    loginUser(user);showToast(isPT?`Bem-vindo, ${user.name}!`:`Welcome, ${user.name}!`);
-  }else{
-    const user=users[email];
-    if(!user||user.pass!==btoa(unescape(encodeURIComponent(pass)))){showToast(isPT?'E-mail ou senha incorretos':'Wrong email or password');return;}
-    loginUser(user);showToast(isPT?`Olá, ${user.name}!`:`Hello, ${user.name}!`);
-  }
-  closeLoginModal();
 }
 function loginUser(user){
   currentUser=user;localStorage.setItem('uh-user',JSON.stringify(user));
@@ -633,14 +635,12 @@ function loginUser(user){
   renderHist();renderRefs();updAuthUI();
 }
 async function logout(){
-  await supa.auth.signOut();
+  var s=initSupa();if(s)await s.auth.signOut();
   if(currentUser)localStorage.setItem('uh-data-'+currentUser.email,JSON.stringify({refs:refs,hist:hist}));
   currentUser=null;localStorage.removeItem('uh-user');updAuthUI();
   showToast(lang==='pt'?'Saiu com sucesso':'Signed out');
 }
-async function loginGoogle(){
-  await supa.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+window.location.pathname}});
-}
+async function loginGoogle(){var s=initSupa();if(!s){showToast('Carregando...');return;}await s.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+window.location.pathname}});}
 function updAuthUI(){
   const loginBtn=document.getElementById('btn-login'),userChip=document.getElementById('user-chip');
   const userAvatar=document.getElementById('user-avatar'),userName=document.getElementById('user-name');
@@ -706,7 +706,7 @@ const T = {
     'nav.briefing':'Análise de Briefing','nav.moodboard':'Direção Visual',
     'nav.roteiro':'Roteiro & PPT','nav.prompt':'Prompt Studio',
     'nav.refs':'Banco de Referências','nav.cal':'Calendário Editorial',
-    'nav.hist':'Histórico','nav.plano':'Planejamento',
+    'nav.hist':'Histórico','nav.plano':'Planejamento','nav.contato':'Contato',
     // Topbar
     'fab':'Prompt Studio','share.toast':'Link copiado!',
     // Trends
@@ -831,7 +831,7 @@ const T = {
     'nav.briefing':'Brief Analysis','nav.moodboard':'Visual Direction',
     'nav.roteiro':'Script & PPT','nav.prompt':'Prompt Studio',
     'nav.refs':'Reference Bank','nav.cal':'Editorial Calendar',
-    'nav.hist':'History','nav.plano':'Strategic Plan',
+    'nav.hist':'History','nav.plano':'Strategic Plan','nav.contato':'Contact',
     'fab':'Prompt Studio','share.toast':'Link copied!',
     'trends.eyebrow':'Real-time market intelligence',
     'trends.title':'<b>Trends</b> Radar',
@@ -971,7 +971,7 @@ function applyLang() {
   const navMap = {
     'ni-trends':'nav.trends','ni-ideias':'nav.ideias','ni-briefing':'nav.briefing',
     'ni-moodboard':'nav.moodboard','ni-roteiro':'nav.roteiro','ni-prompt':'nav.prompt',
-    'ni-refs':'nav.refs','ni-cal':'nav.cal','ni-plano':'nav.plano'
+    'ni-refs':'nav.refs','ni-cal':'nav.cal','ni-plano':'nav.plano','ni-contato':'nav.contato'
   };
   Object.entries(navMap).forEach(([id,key]) => {
     const el = document.getElementById(id); if(!el) return;
@@ -1200,15 +1200,37 @@ gerarCalendario = function() {
 
 // Auto-apply saved theme
 const savedTheme=localStorage.getItem('uh-theme');if(savedTheme){setTheme(savedTheme)}else if(window.matchMedia("(prefers-color-scheme: dark)").matches){setTheme("dark")}
-// Supabase auth — roda depois de tudo carregado
-supa.auth.getSession().then(function(r){
-  var session=r.data.session;
-  if(session)loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});
-});
-supa.auth.onAuthStateChange(function(event,session){
-  if(event==='SIGNED_IN'&&session){loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});closeLoginModal();}
-  if(event==='SIGNED_OUT'){currentUser=null;localStorage.removeItem('uh-user');updAuthUI();}
-});
+// Supabase auth — aguarda SDK carregar
+function _startSupaAuth(){
+  var s=initSupa();
+  if(!s)return;
+  s.auth.getSession().then(function(r){
+    var session=r.data.session;
+    if(session)loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});
+  });
+  s.auth.onAuthStateChange(function(event,session){
+    if(event==='SIGNED_IN'&&session){loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});closeLoginModal();}
+    if(event==='SIGNED_OUT'){currentUser=null;localStorage.removeItem('uh-user');updAuthUI();}
+  });
+}
+window._onSupaReady=function(){_startSupaAuth();};
+if(window._supaReady)_startSupaAuth();
+
+function enviarContato(){
+  var nome=document.getElementById('ct-nome').value.trim();
+  var email=document.getElementById('ct-email').value.trim();
+  var msg=document.getElementById('ct-msg').value.trim();
+  if(!nome||!email||!msg){showToast('Preencha todos os campos');return;}
+  var subject=encodeURIComponent('Contato via Ultra Hype — '+nome);
+  var body=encodeURIComponent('Nome: '+nome+'\nEmail: '+email+'\n\nMensagem:\n'+msg);
+  window.location.href='mailto:guilhermecarocia@gmail.com?subject='+subject+'&body='+body;
+  showToast('Abrindo seu email...');
+  setTimeout(function(){
+    document.getElementById('ct-nome').value='';
+    document.getElementById('ct-email').value='';
+    document.getElementById('ct-msg').value='';
+  },1000);
+}
 
 </script>
 </body>
