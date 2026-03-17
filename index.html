@@ -662,8 +662,11 @@ async function ai(prompt, maxTokens = 2000, retries = 2) {
         incrementUsage();
         return data.text;
       }
-      throw new Error('Resposta vazia');
+        throw new Error('Resposta vazia');
+      }
+      throw new Error('Data text ausente');
     } catch (e) {
+      console.error('AI Error:', e);
       if (attempt === retries) throw e;
       await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
     }
