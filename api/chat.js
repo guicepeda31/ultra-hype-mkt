@@ -14,9 +14,9 @@ const JWT_CACHE_MS    = 300_000; // 5 min
 
 // ── 2. Rate limits — sliding window em múltiplas janelas ──────────────────────
 const LIMITS = {
-  ip:     [ {w:60_000,max:8}, {w:600_000,max:30}, {w:3_600_000,max:80} ],
-  user:   [ {w:60_000,max:15}, {w:600_000,max:60}, {w:86_400_000,max:100} ],
-  global: [ {w:60_000,max:50}, {w:3_600_000,max:500} ],
+  ip:     [ {w:60_000,max:20}, {w:600_000,max:80}, {w:3_600_000,max:200} ],
+  user:   [ {w:60_000,max:30}, {w:600_000,max:100}, {w:86_400_000,max:200} ],
+  global: [ {w:60_000,max:100}, {w:3_600_000,max:800} ],
 };
 const rlMaps = { ip: new Map(), user: new Map(), global: new Map() };
 
