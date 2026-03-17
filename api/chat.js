@@ -34,10 +34,7 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const origin = req.headers.origin;
-  if (origin && origin !== ALLOWED_ORIGIN) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
