@@ -652,38 +652,69 @@ function parseJSON(raw) {
   try{return JSON.parse(s.replace(/,\s*([}\]])/g,'$1').replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":'))}catch(_){}
   throw new Error('JSON parse failed');
 }
-async function ai(prompt,maxTokens=2000,retries=2){
-  if(!checkUsage()) return null;
-  for(let attempt=0;attempt<=retries;attempt++){
-    try{
-      // Get current session token to authenticate with proxy
-      let authHeader = {};
-      try {
-        const s = initSupa();
-        if (s) {
-          const { data } = await s.auth.getSession();
-          if (data?.session?.access_token) {
-            authHeader = { 'Authorization': 'Bearer ' + data.session.access_token };
+let aiCooldownUntil=0;
+let aiInFlight=false;
+
+async function ai(prompt,maxTokens=2000,retries=1){
+  if(!(await checkUsage())) return null;
+  const now=Date.now();
+  if(aiInFlight) throw new Error('Já existe uma solicitação em andamento.');
+  if(aiCooldownUntil>now){
+    const waitSec=Math.max(1,Math.ceil((aiCooldownUntil-now)/1000));
+    throw new Error(`Serviço ocupado. Aguarde ${waitSec}s e tente de novo.`);
+  }
+
+  aiInFlight=true;
+  try{
+    for(let attempt=0;attempt<=retries;attempt++){
+      try{
+        let authHeader = {};
+        try {
+          const s = initSupa();
+          if (s) {
+            const { data } = await s.auth.getSession();
+            if (data?.session?.access_token) authHeader = { 'Authorization': 'Bearer ' + data.session.access_token };
           }
+        } catch(_) {}
+
+        const res=await fetch('/api/chat',{
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json',
+            'Accept':'application/json',
+            'X-Requested-With':'XMLHttpRequest',
+            ...authHeader
+          },
+          body:JSON.stringify({prompt,maxTokens})
+        });
+
+        if(!res.ok){
+          const e=await res.json().catch(()=>({}));
+          const retryAfter=Math.max(1,Number(res.headers.get('Retry-After')||0))||0;
+          const retryable=[429,503,504].includes(res.status);
+          if(retryable){
+            const waitMs=(retryAfter?retryAfter*1000:2500*(attempt+1));
+            aiCooldownUntil=Date.now()+waitMs;
+            if(attempt<retries){
+              await new Promise(r=>setTimeout(r,waitMs));
+              continue;
+            }
+          }
+          throw new Error(e?.error || `API ${res.status}`);
         }
-      } catch(_) {}
-      const res=await fetch('/api/chat',{
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'Accept':'application/json',
-          'X-Requested-With':'XMLHttpRequest',
-          ...authHeader
-        },
-        body:JSON.stringify({prompt,maxTokens})
-      });
-      if(!res.ok){const e=await res.json().catch(()=>({}));if(res.status===429&&attempt<retries){await new Promise(r=>setTimeout(r,2000*(attempt+1)));continue;}throw new Error(`API ${res.status}`);}
-      const data=await res.json();
-      const text=data.text;
-      if(!text) throw new Error('Empty response');
-      incrementUsage();
-      return text;
-    }catch(e){if(attempt===retries)throw e;await new Promise(r=>setTimeout(r,1500*(attempt+1)));}
+
+        aiCooldownUntil=0;
+        const data=await res.json();
+        const text=data.text;
+        if(!text) throw new Error('Empty response');
+        incrementUsage();
+        return text;
+      }catch(e){
+        if(attempt===retries) throw e;
+      }
+    }
+  } finally {
+    aiInFlight=false;
   }
 }
 // ── AUTH & USAGE SYSTEM ──────────────────────────────────────
