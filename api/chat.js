@@ -4,44 +4,12 @@
 
 // ── 1. Configurações ───────────────────────────────────────────────────────────
 const ALLOWED_ORIGIN  = process.env.ALLOWED_ORIGIN            || 'https://ultra-hype-mkt.vercel.app';
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS           || '';
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(v => v.trim())
+  .filter(Boolean);
 const SUPABASE_URL    = process.env.SUPABASE_URL              || '';
 const SUPABASE_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-function normalizeOrigin(value) {
-  if (!value || typeof value !== 'string') return '';
-  const v = value.trim().replace(/\/$/, '');
-  if (!v) return '';
-  if (/^https?:\/\//i.test(v)) return v;
-  if (/^[a-z0-9.-]+(?::\d+)?$/i.test(v)) return `https://${v}`;
-  return '';
-}
-
-function getAllowedOrigins(req) {
-  const forwardedHost = req.headers['x-forwarded-host'] || '';
-  const host = req.headers.host || '';
-  const envOrigins = String(ALLOWED_ORIGINS)
-    .split(',')
-    .map(normalizeOrigin)
-    .filter(Boolean);
-
-  return new Set([
-    normalizeOrigin(ALLOWED_ORIGIN),
-    ...envOrigins,
-    normalizeOrigin(process.env.VERCEL_URL),
-    normalizeOrigin(process.env.VERCEL_BRANCH_URL),
-    normalizeOrigin(process.env.VERCEL_PROJECT_PRODUCTION_URL),
-    normalizeOrigin(forwardedHost),
-    normalizeOrigin(host),
-  ].filter(Boolean));
-}
-
-function isAllowedOrigin(origin, req) {
-  if (!origin) return true;
-  const o = normalizeOrigin(origin);
-  if (!o) return false;
-  return getAllowedOrigins(req).has(o);
-}
 const MAX_PROMPT      = 6000;
 const MAX_TOKENS      = 2000;
 const MAX_BODY        = 12_000;
@@ -50,9 +18,9 @@ const JWT_CACHE_MS    = 300_000; // 5 min
 
 // ── 2. Rate limits — sliding window em múltiplas janelas ──────────────────────
 const LIMITS = {
-  ip:     [ {w:60_000,max:8}, {w:600_000,max:30}, {w:3_600_000,max:80} ],
-  user:   [ {w:60_000,max:15}, {w:600_000,max:60}, {w:86_400_000,max:100} ],
-  global: [ {w:60_000,max:50}, {w:3_600_000,max:500} ],
+  ip:     [ {w:60_000,max:20}, {w:600_000,max:80}, {w:3_600_000,max:200} ],
+  user:   [ {w:60_000,max:30}, {w:600_000,max:100}, {w:86_400_000,max:200} ],
+  global: [ {w:60_000,max:100}, {w:3_600_000,max:800} ],
 };
 const rlMaps = { ip: new Map(), user: new Map(), global: new Map() };
 
@@ -97,6 +65,22 @@ function fingerprint(ip, ua) {
   const s = ip + '|' + (ua||'').slice(0,50);
   for (let i = 0; i < s.length; i++) h = (Math.imul(31,h) + s.charCodeAt(i)) | 0;
   return Math.abs(h).toString(36);
+}
+
+
+function getAllowedOrigins(req) {
+  const forwardedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').trim();
+  const vercelUrls = [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ].filter(Boolean).map(v => v.startsWith('http') ? v : `https://${v}`);
+  const derived = forwardedHost ? [`https://${forwardedHost}`] : [];
+  return [...new Set([ALLOWED_ORIGIN, ...ALLOWED_ORIGINS, ...vercelUrls, ...derived])];
+}
+function matchAllowedOrigin(reqOrigin, allowedOrigins) {
+  if (!reqOrigin) return '';
+  return allowedOrigins.find(v => v === reqOrigin) || '';
 }
 
 // ── 4. Detecção de abuso — 25 padrões de injection/jailbreak ─────────────────
@@ -190,10 +174,11 @@ export default async function handler(req, res) {
   const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 
   // 7.2 Headers de segurança — sempre na primeira linha, toda resposta
+  const allowedOrigins = getAllowedOrigins(req);
   const origin = req.headers.origin || '';
-  const responseOrigin = isAllowedOrigin(origin, req) ? (normalizeOrigin(origin) || normalizeOrigin(ALLOWED_ORIGIN)) : normalizeOrigin(ALLOWED_ORIGIN);
-
-  res.setHeader('Access-Control-Allow-Origin',   responseOrigin);
+  const matchedOrigin = matchAllowedOrigin(origin, allowedOrigins);
+  if (matchedOrigin) res.setHeader('Access-Control-Allow-Origin', matchedOrigin);
+  res.setHeader('Vary',                          'Origin');
   res.setHeader('Access-Control-Allow-Methods',  'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers',  'Content-Type, Authorization, X-Requested-With');
   res.setHeader('X-Content-Type-Options',        'nosniff');
@@ -202,17 +187,19 @@ export default async function handler(req, res) {
   res.setHeader('Referrer-Policy',               'no-referrer');
   res.setHeader('Strict-Transport-Security',     'max-age=63072000; includeSubDomains; preload');
   res.setHeader('Permissions-Policy',            'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('Cross-Origin-Resource-Policy',  'same-origin');
   res.setHeader('Cache-Control',                 'no-store, no-cache, must-revalidate, private');
   res.setHeader('X-Request-ID',                  reqId);
 
   // Helper — resposta de erro com delay mínimo para dificultar timing attacks
-  const deny = async (status, msg, delayMs = 0) => {
+  const deny = async (status, msg, delayMs = 0, extraHeaders = {}) => {
     if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
-    return res.status(status).json({ error: msg });
+    Object.entries(extraHeaders).forEach(([k,v]) => res.setHeader(k, v));
+    return res.status(status).json({ error: msg, requestId: reqId });
   };
 
   // 7.3 CORS
-  if (!isAllowedOrigin(origin, req)) return deny(403, 'Forbidden');
+  if (origin && !matchedOrigin) return deny(403, 'Forbidden');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')   return deny(405, 'Method not allowed');
@@ -243,8 +230,7 @@ export default async function handler(req, res) {
 
   // 7.8 Referer — deve ser do próprio domínio ou ausente (mobile apps ok)
   const referer = req.headers['referer'] || req.headers['referrer'] || '';
-  const allowedReferer = !referer || Array.from(getAllowedOrigins(req)).some(a => referer.startsWith(a)) || referer.startsWith('https://ultra-hype-mkt');
-  if (!allowedReferer) {
+  if (referer && !allowedOrigins.some(v => referer.startsWith(v)) && !referer.startsWith('https://ultra-hype-mkt')) {
     console.warn(`[${reqId}] Bad referer: ${referer.slice(0,80)}`);
     return deny(403, 'Forbidden', 500);
   }
@@ -262,13 +248,13 @@ export default async function handler(req, res) {
 
   // 7.11 Rate limits em cascata
   if (checkRL('global', 'singleton'))
-    return deny(429, 'Service busy. Try again shortly.');
+    return deny(429, 'Service busy. Try again shortly.', 0, { 'Retry-After': '60' });
 
   if (checkRL('ip', ip))
-    return deny(429, 'Too many requests. Try again later.', 200);
+    return deny(429, 'Too many requests. Try again later.', 200, { 'Retry-After': '60' });
 
   if (checkRL('ip', fp))
-    return deny(429, 'Too many requests. Try again later.', 200);
+    return deny(429, 'Too many requests. Try again later.', 200, { 'Retry-After': '60' });
 
   // 7.12 JWT Supabase
   const auth   = req.headers['authorization'] || '';
@@ -276,7 +262,7 @@ export default async function handler(req, res) {
   const userId = token ? await verifyJWT(token) : null;
 
   if (userId && checkRL('user', userId))
-    return deny(429, 'Too many requests. Try again in a minute.', 200);
+    return deny(429, 'Too many requests. Try again in a minute.', 200, { 'Retry-After': '60' });
 
   // 7.13 Valida body
   let prompt, maxTokens;
@@ -336,7 +322,7 @@ export default async function handler(req, res) {
     if (!gres.ok) {
       const status = gres.status;
       console.error(`[${reqId}] Gemini ${status}`);
-      if (status === 429) return deny(429, 'Service busy. Try again shortly.');
+      if (status === 429) return deny(503, 'Service busy. Try again shortly.', 0, { 'Retry-After': '30' });
       return deny(502, 'AI service error');
     }
 
