@@ -642,7 +642,7 @@ function isLight(hex){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3
 function esc(s){return(s||'').replace(/'/g,"&#39;").replace(/"/g,'&quot;')}
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
 async function cpText(text,btn){try{await navigator.clipboard.writeText(text);const o=btn.innerHTML;btn.innerHTML='✓ Copiado';showToast('Prompt copiado!');setTimeout(()=>btn.innerHTML=o,1800)}catch{showToast('Selecione o texto e pressione Ctrl+C')}}
-window.addEventListener('beforeunload',()=>{ try{ sRemove('uh-user'); sRemove('uh-usage'); }catch(_){} });
+window.addEventListener('beforeunload',()=>{ try{ sRemove('uh-user'); }catch(_){} });
 // ── ROBUST AI — smart JSON parser + retry + usage gate ──────
 function parseJSON(raw) {
   let s = raw.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
@@ -690,8 +690,13 @@ async function ai(prompt,maxTokens=2000,retries=1){
 
         if(!res.ok){
           const e=await res.json().catch(()=>({}));
+          if(e?.usage) syncUsage(e.usage);
+          if(e?.code==='daily_limit_reached'){
+            showUsageModal();
+            throw new Error(e?.error || 'Limite diário atingido.');
+          }
           const retryAfter=Math.max(1,Number(res.headers.get('Retry-After')||0))||0;
-          const retryable=[429,503,504].includes(res.status);
+          const retryable=[503,504].includes(res.status);
           if(retryable){
             const waitMs=(retryAfter?retryAfter*1000:2500*(attempt+1));
             aiCooldownUntil=Date.now()+waitMs;
@@ -706,8 +711,8 @@ async function ai(prompt,maxTokens=2000,retries=1){
         aiCooldownUntil=0;
         const data=await res.json();
         const text=data.text;
+        if(data?.usage) syncUsage(data.usage);
         if(!text) throw new Error('Empty response');
-        incrementUsage();
         return text;
       }catch(e){
         if(attempt===retries) throw e;
@@ -718,53 +723,29 @@ async function ai(prompt,maxTokens=2000,retries=1){
   }
 }
 // ── AUTH & USAGE SYSTEM ──────────────────────────────────────
-const USAGE_LIMIT=15;
+const USAGE_LIMIT=10;
 let currentUser=sGet('uh-user',null);
-function getUsageData(){const now=new Date(),day=`${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`,raw=sGet('uh-usage',{});if(raw.month!==day)return{month:day,count:0};return raw;}
+function getUsageData(){const now=new Date(),day=`${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`,raw=pGet('uh-usage',{});if(raw.day!==day)return{day:day,count:0};return raw;}
 async function checkUsage(){
   var d=getUsageData();
   if(d.count>=USAGE_LIMIT){showUsageModal();return false;}
-  if(currentUser){
-    var month=new Date().toISOString().slice(0,10);
-    var s=initSupa();if(!s)return true;
-    var gur=await s.auth.getUser();
-    var uid=gur.data&&gur.data.user&&gur.data.user.id;
-    if(uid){
-      try {
-        var r=await s.from('user_usage').select('uses_this_month,month_key').eq('id',uid).maybeSingle();
-        // Nunca loga r.data — pode conter email e dados do usuário
-        if(r.error) throw r.error;
-        if(r.data&&r.data.month_key===month&&r.data.uses_this_month>=USAGE_LIMIT){showUsageModal();return false;}
-      } catch(_supaErr) {
-        // Falha silenciosa — não bloqueia o usuário por erro de rede
-      }
-    }
-  }
   return true;
 }
-async function incrementUsage(){
-  var d=getUsageData();d.count=(d.count||0)+1;
-  sSet('uh-usage',d);updUsageBadge();
-  if(!currentUser)return;
-  var s=initSupa();if(!s)return;
-  var r2=await s.auth.getUser();
-  var user=r2.data&&r2.data.user;
-  if(!user)return;
-  var month=new Date().toISOString().slice(0,10);
-  try {
-    // Não inclui nome — apenas dados de uso
-    await s.from('user_usage').upsert({
-      id: user.id,
-      email: user.email,
-      uses_this_month: d.count,
-      month_key: month,
-      updated_at: new Date().toISOString()
-    },{onConflict:'id'});
-  } catch(_) { /* falha silenciosa — não quebra o fluxo */ }
+function syncUsage(data){
+  if(!data||typeof data.used!=='number') return;
+  const now=new Date(),day=`${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+  pSet('uh-usage',{day:day,count:Math.max(0,Number(data.used)||0),limit:Number(data.limit)||USAGE_LIMIT,remaining:Math.max(0,Number(data.remaining)||0)});
+  updUsageBadge();
 }
-function getUsageLeft(){return Math.max(0,USAGE_LIMIT-getUsageData().count);}
+function incrementUsage(){
+  var d=getUsageData();
+  d.count=(d.count||0)+1;
+  pSet('uh-usage',d);
+  updUsageBadge();
+}
+function getUsageLeft(){const d=getUsageData();if(typeof d.remaining==='number') return Math.max(0,d.remaining);return Math.max(0,USAGE_LIMIT-(d.count||0));}
 function updUsageBadge(){const left=getUsageLeft(),badge=document.getElementById('usage-badge');if(badge){badge.textContent=`${left} uso${left!==1?'s':''} restante${left!==1?'s':''} hoje`;badge.style.color=left<=1?'var(--red)':left<=2?'var(--amber)':'var(--t3)';}}
-function showUsageModal(){document.getElementById('usage-modal-msg').innerHTML=lang==='pt'?`Você usou seus <strong>5 usos gratuitos</strong> deste mês.<br><br>Crie uma conta ou entre para continuar.`:`You've used your <strong>5 free uses</strong> this month.<br><br>Create an account or sign in to continue.`;document.getElementById('usage-modal').style.display='block';}
+function showUsageModal(){document.getElementById('usage-modal-msg').innerHTML=lang==='pt'?`Você atingiu seu limite de <strong>10 usos por dia</strong>.<br><br>Tente novamente amanhã.`:`You've reached your <strong>10 uses per day</strong> limit.<br><br>Please try again tomorrow.`;document.getElementById('usage-modal').style.display='block';}
 // ── LOGIN ────────────────────────────────────────────────────
 function showLoginModal(mode='login'){document.getElementById('login-modal').style.display='block';switchAuthMode(mode);}
 function closeLoginModal(){document.getElementById('login-modal').style.display='none';}
