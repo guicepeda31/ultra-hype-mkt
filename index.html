@@ -638,7 +638,7 @@ async function ai(prompt, maxTokens = 2000, retries = 2) {
           authHeader = { 'Authorization': 'Bearer ' + data.session.access_token };
         }
       }
-      const res = await fetch('/api/chat', {
+      const res = await fetch('api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
