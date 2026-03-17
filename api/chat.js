@@ -358,12 +358,27 @@ setInterval(() => {
 const DAILY_USAGE_LIMIT = 10;
 const USAGE_COOKIE_NAME = 'uh_usage_v1';
 const COOKIE_SECRET = process.env.LIMIT_SIGNING_SECRET || process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY || 'ultra-hype-default-secret';
+const dailyUsageMap = new Map();
 
 function dayKeyUTC() {
   return new Date().toISOString().slice(0, 10);
 }
 function signUsagePayload(payload) {
   return crypto.createHmac('sha256', COOKIE_SECRET).update(payload).digest('base64url');
+}
+function stableHash(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 24);
+}
+function ipBucket(ip) {
+  const v = String(ip || '').trim();
+  if (v.includes(':')) return v.split(':').slice(0, 4).join(':');
+  const parts = v.split('.');
+  return parts.length === 4 ? `${parts[0]}.${parts[1]}.${parts[2]}` : v;
+}
+function actorBinding({ userId, fp, ip }) {
+  if (userId) return { mode: 'user', key: `user:${userId}`, id: stableHash(`user:${userId}`) };
+  const bucket = ipBucket(ip);
+  return { mode: 'anon', key: `anon:${fp}:${bucket}`, id: stableHash(`anon:${fp}:${bucket}`) };
 }
 function parseCookies(req) {
   const raw = String(req.headers.cookie || '');
@@ -376,11 +391,11 @@ function parseCookies(req) {
   }
   return out;
 }
-function readUsageState(req) {
+function readCookieUsageState(req, binding) {
   const cookies = parseCookies(req);
   const raw = cookies[USAGE_COOKIE_NAME];
   const today = dayKeyUTC();
-  if (!raw) return { day: today, count: 0 };
+  if (!raw) return { day: today, count: 0, actor: binding.id, mode: binding.mode, source: 'cookie' };
   try {
     const [payloadEnc, sig] = raw.split('.');
     if (!payloadEnc || !sig) throw new Error('bad cookie');
@@ -390,22 +405,47 @@ function readUsageState(req) {
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error('bad signature');
     const json = Buffer.from(payloadEnc, 'base64url').toString('utf8');
     const data = JSON.parse(json);
+    const cookieActor = String(data.actor || '');
     const count = Number(data.count) || 0;
     const day = data.day === today ? data.day : today;
-    return { day, count: day === today ? Math.max(0, count) : 0 };
+    if (cookieActor !== binding.id) return { day: today, count: 0, actor: binding.id, mode: binding.mode, source: 'cookie' };
+    return { day, count: day === today ? Math.max(0, count) : 0, actor: binding.id, mode: binding.mode, source: 'cookie' };
   } catch {
-    return { day: today, count: 0 };
+    return { day: today, count: 0, actor: binding.id, mode: binding.mode, source: 'cookie' };
   }
 }
-function writeUsageCookie(res, state) {
-  const payload = Buffer.from(JSON.stringify({ day: state.day, count: state.count }), 'utf8').toString('base64url');
+function readMapUsageState(binding) {
+  const today = dayKeyUTC();
+  const raw = dailyUsageMap.get(binding.key);
+  if (!raw || raw.day !== today) {
+    if (raw) dailyUsageMap.delete(binding.key);
+    return { day: today, count: 0, actor: binding.id, mode: binding.mode, source: 'map' };
+  }
+  return { day: today, count: Math.max(0, Number(raw.count) || 0), actor: binding.id, mode: binding.mode, source: 'map' };
+}
+function effectiveUsageState(req, binding) {
+  const cookieState = readCookieUsageState(req, binding);
+  const mapState = readMapUsageState(binding);
+  return cookieState.count >= mapState.count ? cookieState : mapState;
+}
+function persistUsageState(res, binding, state) {
+  const normalized = { day: state.day, count: Math.max(0, Number(state.count) || 0), actor: binding.id, mode: binding.mode };
+  dailyUsageMap.set(binding.key, normalized);
+  const payload = Buffer.from(JSON.stringify(normalized), 'utf8').toString('base64url');
   const sig = signUsagePayload(payload);
   const maxAge = 60 * 60 * 24 * 2;
   res.setHeader('Set-Cookie', `${USAGE_COOKIE_NAME}=${payload}.${sig}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+  return normalized;
 }
 function usageResponseShape(state) {
-  return { limit: DAILY_USAGE_LIMIT, used: state.count, remaining: Math.max(0, DAILY_USAGE_LIMIT - state.count), period: 'day' };
+  return { limit: DAILY_USAGE_LIMIT, used: state.count, remaining: Math.max(0, DAILY_USAGE_LIMIT - state.count), period: 'day', scope: state.mode || 'anon' };
 }
+setInterval(() => {
+  const today = dayKeyUTC();
+  for (const [k, v] of dailyUsageMap) {
+    if (!v || v.day !== today) dailyUsageMap.delete(k);
+  }
+}, 600_000);
 
 // ── 7. Handler ────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
@@ -504,10 +544,13 @@ export default async function handler(req, res) {
   if (userId && checkRL('user', userId))
     return deny(429, 'Too many requests. Try again in a minute.', 200, { 'Retry-After': '60' });
 
-  // 7.12.1 Daily usage limit — source of truth on the server
-  const usageState = readUsageState(req);
+  // 7.12.1 Daily usage limit — bound to authenticated user when available,
+  // otherwise to IP bucket + fingerprint. Server map is primary within the
+  // running instance; signed cookie preserves the count across refreshes.
+  const binding = actorBinding({ userId, fp, ip });
+  const usageState = effectiveUsageState(req, binding);
   if (usageState.count >= DAILY_USAGE_LIMIT) {
-    writeUsageCookie(res, usageState);
+    persistUsageState(res, binding, usageState);
     return deny(429, 'Daily limit reached. Try again tomorrow.', 0, { 'Retry-After': '3600' }, { code: 'daily_limit_reached', usage: usageResponseShape(usageState) });
   }
 
@@ -548,8 +591,7 @@ export default async function handler(req, res) {
     const result = await provider.fn();
     if (result?.skipped) continue;
     if (result?.ok) {
-      const nextUsageState = { day: usageState.day, count: usageState.count + 1 };
-      writeUsageCookie(res, nextUsageState);
+      const nextUsageState = persistUsageState(res, binding, { day: usageState.day, count: usageState.count + 1 });
       return res.status(200).json({ text: result.text, provider: result.provider, model: result.model, usage: usageResponseShape(nextUsageState) });
     }
 
