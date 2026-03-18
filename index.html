@@ -950,7 +950,7 @@ async function loginGoogle(){
     showToast((err&&err.message)||'Erro no login com Google');
     authBusy=false;
   }
-}await s.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+window.location.pathname}});}
+}
 function updAuthUI(){
   const loginBtn=document.getElementById('btn-login'),userChip=document.getElementById('user-chip');
   const userAvatar=document.getElementById('user-avatar'),userName=document.getElementById('user-name');
