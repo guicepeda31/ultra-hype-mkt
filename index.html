@@ -447,7 +447,7 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
     </div></div>
     <div id="tab-trends" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/></svg>Inteligência de mercado em tempo real</div><h1 class="page-title">Radar de <b>Trends</b></h1><p class="page-sub">Dados verificáveis de Wikipedia, HackerNews, Google News e DuckDuckGo. Cada card exibe score de oportunidade 0–100 e links diretos para a fonte.</p></div><div class="search-wrap"><input id="inp-trends" type="text" placeholder="Digite um tema — ex: saúde mental, IA no trabalho, moda circular"/><button class="search-btn" id="btn-trends" onclick="buscarTrends()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Analisar</button></div><div class="chips-row"><span class="chip on" onclick="this.classList.toggle('on')">Wikipedia Trending</span><span class="chip on" onclick="this.classList.toggle('on')">HackerNews</span><span class="chip on" onclick="this.classList.toggle('on')">Google News</span><span class="chip on" onclick="this.classList.toggle('on')">DuckDuckGo News</span><span class="chip on" onclick="this.classList.toggle('on')">Reddit</span></div><div id="out-trends"><div class="info-card ic-blue"><div class="ic-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/></svg></div><div class="ic-body">Digite um tema e clique <strong>Analisar</strong>. A IA consulta fontes reais e retorna trends com <strong>score de oportunidade</strong> e links verificáveis.</div></div></div></div></div>
     <div id="tab-ideias" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Criação</div><h1 class="page-title">Ideias de <b>Campanha</b></h1><p class="page-sub">Três conceitos criativos distintos com tagline, copy hooks, plataforma e janela de oportunidade.</p></div><div class="search-wrap"><input id="inp-ideias" type="text" placeholder="Tema ou produto — ex: tênis sustentável, app financeiro para jovens"/><button class="search-btn" id="btn-ideias" onclick="gerarIdeias()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Gerar</button></div><div id="out-ideias"><div class="info-card ic-default"><div class="ic-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div class="ic-body">A IA vai gerar <strong>3 conceitos criativos</strong> com níveis safe, bold e disruptivo.</div></div></div></div></div>
-    <div id="tab-briefing" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>Estratégia</div><h1 class="page-title">Análise de <b>Briefing</b></h1><p class="page-sub">Cole o briefing — a IA extrai produto, público, tom e cruza com as trends mais relevantes.</p></div><div class="drop" onclick="document.getElementById('f-up').click()"><div class="drop-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><div class="drop-title">Arraste o arquivo aqui</div><div class="drop-sub">TXT — ou cole abaixo</div></div><input type="file" id="f-up" accept=".txt" style="display:none" onchange="lerArq(this)"/><textarea class="ta" id="inp-briefing" placeholder="Cole o briefing completo..."></textarea><button class="gbutton" id="btn-briefing" onclick="analisarBriefing()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Analisar com IA</button><div id="out-briefing"></div></div></div>
+    <div id="tab-briefing" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>Estratégia</div><h1 class="page-title">Análise de <b>Briefing</b></h1><p class="page-sub">Cole o briefing — a IA extrai produto, público, tom e cruza com as trends mais relevantes.</p></div><div class="drop" onclick="document.getElementById('f-up').click()"><div class="drop-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><div class="drop-title">Arraste o arquivo aqui</div><div class="drop-sub">PDF ou TXT — ou cole abaixo</div></div><input type="file" id="f-up" accept=".txt,.pdf,application/pdf,text/plain" style="display:none" onchange="lerArq(this)"/><textarea class="ta" id="inp-briefing" placeholder="Cole o briefing completo..."></textarea><button class="gbutton" id="btn-briefing" style="background:linear-gradient(135deg,#1a73e8,#4c8dff);box-shadow:0 10px 24px rgba(26,115,232,.28)" onclick="analisarBriefing()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Analisar com IA</button><div id="out-briefing"></div></div></div>
     <div id="tab-moodboard" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>Visual</div><h1 class="page-title">Direção <b>Visual</b></h1><p class="page-sub">Paleta, tipografias, referências e palavras visuais para a produção.</p></div><div class="search-wrap"><input id="inp-mood" type="text" placeholder="Direção estética — ex: brutalismo tropical, Y2K Brasil"/><button class="search-btn" id="btn-mood" onclick="gerarMoodboard()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Criar</button></div><div id="out-mood"><div class="info-card ic-default"><div class="ic-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div class="ic-body">Descreva a <strong>direção estética</strong> para montar paleta, tipografias e referências.</div></div></div></div></div>
     <div id="tab-roteiro" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>Produção</div><h1 class="page-title">Roteiro & <b>Apresentação</b></h1><p class="page-sub">Roteiros de vídeo, scripts de Reels, estruturas de PPT e pitch decks.</p></div><div class="type-grid"><div class="type-card" id="tc-video" onclick="selType('video')"><div class="type-card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div><div class="type-card-title">Roteiro de Vídeo</div><div class="type-card-desc">Script com cenas, narração e direção</div></div><div class="type-card" id="tc-reels" onclick="selType('reels')"><div class="type-card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></div><div class="type-card-title">Script de Reels</div><div class="type-card-desc">Hook + desenvolvimento + CTA em 60s</div></div><div class="type-card" id="tc-ppt" onclick="selType('ppt')"><div class="type-card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><div class="type-card-title">Estrutura de PPT</div><div class="type-card-desc">Slides com títulos, bullets e visuais</div></div><div class="type-card" id="tc-pitch" onclick="selType('pitch')"><div class="type-card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div class="type-card-title">Pitch Deck</div><div class="type-card-desc">Narrativa para aprovação de campanha</div></div></div><div id="area-rot" style="display:none"><div class="search-wrap" style="margin-bottom:10px"><input id="inp-rot" type="text" placeholder="Tema da campanha..."/></div><div class="sc-row"><span class="sc-lbl">Número de slides / cenas</span><div class="sc-ctrl"><button class="sc-b" onclick="adjSc(-1)">−</button><span class="sc-v" id="sc-v">8</span><button class="sc-b" onclick="adjSc(1)">+</button></div></div><div class="fmt-row"><div class="fmt-opt on" onclick="togFmt(this)">16:9</div><div class="fmt-opt" onclick="togFmt(this)">9:16</div><div class="fmt-opt" onclick="togFmt(this)">1:1</div></div><button class="gbutton" id="btn-rot" onclick="gerarRoteiro()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>Gerar conteúdo</button><div id="out-rot"></div></div></div></div>
     <div id="tab-prompt" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Leve para qualquer IA</div><h1 class="page-title">Prompt <b>Studio</b></h1><p class="page-sub">Tudo que você construiu no Ultra Hype vira prompts otimizados prontos para copiar e colar na IA da sua escolha.</p></div><div class="ps-hero"><div class="ps-hero-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Como funciona</div><div class="ps-hero-sub"><strong>1.</strong> Escolha a categoria de IA &nbsp;<strong>2.</strong> Selecione as ferramentas &nbsp;<strong>3.</strong> Marque o contexto &nbsp;<strong>4.</strong> Gerar Prompts &nbsp;<strong>5.</strong> Copie e cole direto na ferramenta</div></div><div style="font-size:12px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Categoria de IA</div><div class="ps-cat-grid"><div class="ps-cat on" id="pscat-video" onclick="selPsCat('video')"><div class="ps-cat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div><div class="ps-cat-name">Vídeo</div><div class="ps-cat-sub">Sora, Runway, Kling</div></div><div class="ps-cat" id="pscat-imagem" onclick="selPsCat('imagem')"><div class="ps-cat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><div class="ps-cat-name">Imagem</div><div class="ps-cat-sub">Midjourney, DALL-E</div></div><div class="ps-cat" id="pscat-ppt" onclick="selPsCat('ppt')"><div class="ps-cat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><div class="ps-cat-name">Apresentação</div><div class="ps-cat-sub">Gamma, Tome, Canva</div></div><div class="ps-cat" id="pscat-texto" onclick="selPsCat('texto')"><div class="ps-cat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="13" y1="18" x2="3" y2="18"/></svg></div><div class="ps-cat-name">Texto & Copy</div><div class="ps-cat-sub">ChatGPT, Claude, Gemini</div></div></div><div style="font-size:12px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Ferramentas</div><div id="ps-tools-video" class="ps-tools"><span class="ps-tool on" onclick="this.classList.toggle('on')">Sora (OpenAI)</span><span class="ps-tool on" onclick="this.classList.toggle('on')">Runway Gen-3</span><span class="ps-tool" onclick="this.classList.toggle('on')">Kling AI</span><span class="ps-tool" onclick="this.classList.toggle('on')">Pika Labs</span><span class="ps-tool" onclick="this.classList.toggle('on')">Luma Dream Machine</span><span class="ps-tool" onclick="this.classList.toggle('on')">Hailuo AI</span></div><div id="ps-tools-imagem" class="ps-tools" style="display:none"><span class="ps-tool on" onclick="this.classList.toggle('on')">Midjourney v6</span><span class="ps-tool on" onclick="this.classList.toggle('on')">DALL-E 3</span><span class="ps-tool" onclick="this.classList.toggle('on')">Adobe Firefly</span><span class="ps-tool" onclick="this.classList.toggle('on')">Ideogram 2</span><span class="ps-tool" onclick="this.classList.toggle('on')">Leonardo.Ai</span><span class="ps-tool" onclick="this.classList.toggle('on')">Stable Diffusion XL</span></div><div id="ps-tools-ppt" class="ps-tools" style="display:none"><span class="ps-tool on" onclick="this.classList.toggle('on')">Gamma</span><span class="ps-tool on" onclick="this.classList.toggle('on')">Tome</span><span class="ps-tool" onclick="this.classList.toggle('on')">Beautiful.ai</span><span class="ps-tool" onclick="this.classList.toggle('on')">Canva IA</span><span class="ps-tool" onclick="this.classList.toggle('on')">SlidesAI</span></div><div id="ps-tools-texto" class="ps-tools" style="display:none"><span class="ps-tool on" onclick="this.classList.toggle('on')">ChatGPT</span><span class="ps-tool on" onclick="this.classList.toggle('on')">Claude</span><span class="ps-tool" onclick="this.classList.toggle('on')">Gemini</span><span class="ps-tool" onclick="this.classList.toggle('on')">Perplexity</span><span class="ps-tool" onclick="this.classList.toggle('on')">Copy.ai</span></div><div style="font-size:12px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;margin-top:4px">Incluir no contexto</div><div class="ps-ctx"><div class="ps-ctx-hd"><span class="ps-ctx-title">Análises do Ultra Hype</span><span style="font-size:12px;color:var(--t3)">Clique para ativar/desativar</span></div><div class="ps-ctx-item on" id="ctx-trends" onclick="this.classList.toggle('on')"><div class="ps-ctx-ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="ps-ctx-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/></svg></div><span class="ps-ctx-label">Trends analisadas</span><span class="ps-ctx-st" id="ctx-trends-st">nenhuma ainda</span></div><div class="ps-ctx-item on" id="ctx-ideias" onclick="this.classList.toggle('on')"><div class="ps-ctx-ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="ps-ctx-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><span class="ps-ctx-label">Ideias de campanha</span><span class="ps-ctx-st" id="ctx-ideias-st">nenhuma ainda</span></div><div class="ps-ctx-item on" id="ctx-mood" onclick="this.classList.toggle('on')"><div class="ps-ctx-ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="ps-ctx-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></div><span class="ps-ctx-label">Direção visual</span><span class="ps-ctx-st" id="ctx-mood-st">nenhuma ainda</span></div><div class="ps-ctx-item on" id="ctx-plano" onclick="this.classList.toggle('on')"><div class="ps-ctx-ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="ps-ctx-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><span class="ps-ctx-label">Planejamento estratégico</span><span class="ps-ctx-st" id="ctx-plano-st">nenhum ainda</span></div></div><button class="ps-gen" id="btn-ps" onclick="gerarPrompts()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Gerar Prompts Otimizados</button><div id="out-ps"></div></div></div>
@@ -464,7 +464,7 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
     <div id="tab-plano" class="panel"><div class="page"><div class="page-hd"><div class="page-eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Gerado com IA</div><h1 class="page-title">Planejamento <b>Estratégico</b></h1><p class="page-sub">Posicionamento, fases, canais, KPIs e próximos passos.</p></div><div id="plano-themes"></div><div id="out-plano"><div class="spin-wrap"><div class="spin"></div><p>Gerando planejamento...</p></div></div></div></div>
   </div>
 </div>
-<div class="sel-bar" id="sel-bar"><span class="sel-n" id="sel-n">0</span><span style="font-size:13px;opacity:.7">trends selecionadas</span><div class="sel-sep"></div><button class="sel-go" id="sel-go-btn" onclick="irParaPlano()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Gerar Planejamento</button><button class="sel-clr" onclick="limparSel()">✕ limpar</button></div>
+<div class="sel-bar" id="sel-bar"><span class="sel-n" id="sel-n">0</span><span style="font-size:13px;opacity:.7">trends selecionadas</span><div class="sel-sep"></div><button class="sel-go" id="sel-go-btn" onclick="irParaPlano()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Gerar Planejamento Automático</button><button class="sel-clr" onclick="limparSel()">✕ limpar</button></div>
 <div class="toast" id="toast">Copiado ✓</div>
 <div id="modal-ref" style="display:none"><div class="modal-ov" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-title">Adicionar referência</div><div class="mf"><label>Título</label><input id="mf-titulo" type="text" placeholder="Nome da campanha, artigo..."/></div><div class="mf"><label>Tipo</label><select id="mf-tipo"><option>campanha</option><option>artigo</option><option>vídeo</option><option>imagem</option><option>ferramenta</option><option>outro</option></select></div><div class="mf"><label>URL</label><input id="mf-url" type="url" placeholder="https://..."/></div><div class="mf"><label>Notas</label><textarea id="mf-notas" placeholder="Por que isso é relevante..."></textarea></div><div class="mf"><label>Tag / tema</label><input id="mf-tag" type="text" placeholder="Ex: sustentabilidade, gen-z..."/></div><div class="modal-btns"><button class="mbtn" onclick="closeModal()">Cancelar</button><button class="mbtn mbtn-p" onclick="salvarRef()">Salvar</button></div></div></div></div>
 <!-- CALENDAR DAY MODAL -->
@@ -1028,7 +1028,39 @@ function renderHist(){const el=document.getElementById('nav-hist');if(!hist.leng
 renderHist();
 function updBar(){const n=selMap.size;document.getElementById('sel-n').textContent=n;document.getElementById('sel-bar').classList.toggle('on',n>0)}
 function limparSel(){selMap.clear();document.querySelectorAll('.tcard.sel').forEach(c=>c.classList.remove('sel'));updBar()}
-function togCard(id,titulo,ctx,cat,q,fonte,score){const el=document.getElementById(id);if(selMap.has(id)){selMap.delete(id);el.classList.remove('sel')}else{selMap.set(id,{titulo,ctx,cat,q,fonte,score});el.classList.add('sel')}updBar()}
+let autoPlanTimer=null;
+function togCard(id,titulo,ctx,cat,q,fonte,score){
+  const el=document.getElementById(id);
+  if(selMap.has(id)){
+    selMap.delete(id);
+    el.classList.remove('sel');
+  }else{
+    selMap.set(id,{titulo,ctx,cat,q,fonte,score});
+    el.classList.add('sel');
+  }
+  updBar();
+  if(autoPlanTimer) clearTimeout(autoPlanTimer);
+  if(selMap.size>=2){
+    const goBtn=document.getElementById('sel-go-btn');
+    if(goBtn){
+      goBtn.textContent='Gerando automaticamente…';
+      goBtn.disabled=true;
+    }
+    autoPlanTimer=setTimeout(async ()=>{
+      try{ await irParaPlano(); }
+      finally{
+        const btn=document.getElementById('sel-go-btn');
+        if(btn){ btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Gerar Planejamento Automático'; btn.disabled=false; }
+      }
+    },500);
+  }else{
+    const goBtn=document.getElementById('sel-go-btn');
+    if(goBtn){
+      goBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Gerar Planejamento Automático';
+      goBtn.disabled=false;
+    }
+  }
+}
 async function buscarTrends(){
   const tema=(document.getElementById('inp-trends').value||'').trim();
   if(!tema)return;
@@ -1120,7 +1152,7 @@ Formato exato:
   }
 }
 
-function renderTrends(d,tema){const tom=t=>t==='positivo'?`<span class="gtag gtag-ev">+ positivo</span>`:t==='negativo'?`<span class="gtag gtag-now">− negativo</span>`:`<span class="gtag gtag-d">neutro</span>`;const scC=s=>s>=75?'sc-hi':s>=50?'sc-md':'sc-lo';const credB=c=>c==='alta'?`<span class="gtag gtag-ev" style="font-size:9px">✓ verificável</span>`:`<span class="gtag gtag-d" style="font-size:9px">verificar fonte</span>`;const card=(it,cat,ct)=>{const id='tc'+(++tcId),q=it.query_busca||it.titulo,sc=it.score||55;return`<div class="tcard" id="${id}" onclick="togCard('${id}','${esc(it.titulo)}','${esc(it.contexto)}','${cat}','${esc(q)}','${esc(it.fonte||'')}',${sc})"><div class="tcard-cb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="tcard-head"><div class="tcard-title">${it.titulo}</div><span class="tcard-score ${scC(sc)}">${sc}</span></div><div class="tcard-ctx">${it.contexto}</div><div class="tcard-foot"><span class="gtag ${ct}">${cat}</span><span class="gtag gtag-d">${it.plataformas}</span>${tom(it.tom)}${credB(it.credibilidade)}${it.fonte?slink(it.fonte,q):''}</div></div>`};const col=(items,cls,lbl,cat,ct)=>`<div class="${cls}"><div class="tcol-hd"><span class="col-dot"></span>${lbl}</div>${(items||[]).map(it=>card(it,cat,ct)).join('')}</div>`;document.getElementById('out-trends').innerHTML=`${d.resumo?`<div class="info-card ic-blue"><div class="ic-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></div><div class="ic-body">${d.resumo} — <strong>Clique nos cards</strong> para selecionar e gerar planejamento.</div></div>`:''}<div class="trend-cols">${col(d.now,'col-now','Agora','Trending Now','gtag-now')}${col(d.emerging,'col-em','Emergindo','Emergindo','gtag-em')}${col(d.evergreen,'col-ev','Evergreen','Evergreen','gtag-ev')}</div>`}
+function renderTrends(d,tema){const tom=t=>t==='positivo'?`<span class="gtag gtag-ev">+ positivo</span>`:t==='negativo'?`<span class="gtag gtag-now">− negativo</span>`:`<span class="gtag gtag-d">neutro</span>`;const scC=s=>s>=75?'sc-hi':s>=50?'sc-md':'sc-lo';const credB=c=>c==='alta'?`<span class="gtag gtag-ev" style="font-size:9px">✓ verificável</span>`:`<span class="gtag gtag-d" style="font-size:9px">verificar fonte</span>`;const card=(it,cat,ct)=>{const id='tc'+(++tcId),q=it.query_busca||it.titulo,sc=it.score||55;return`<div class="tcard" id="${id}" onclick="togCard('${id}','${esc(it.titulo)}','${esc(it.contexto)}','${cat}','${esc(q)}','${esc(it.fonte||'')}',${sc})"><div class="tcard-cb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="tcard-head"><div class="tcard-title">${it.titulo}</div><span class="tcard-score ${scC(sc)}">${sc}</span></div><div class="tcard-ctx">${it.contexto}</div><div class="tcard-foot"><span class="gtag ${ct}">${cat}</span><span class="gtag gtag-d">${it.plataformas}</span>${tom(it.tom)}${credB(it.credibilidade)}${it.fonte?slink(it.fonte,q):''}</div></div>`};const col=(items,cls,lbl,cat,ct)=>`<div class="${cls}"><div class="tcol-hd"><span class="col-dot"></span>${lbl}</div>${(items||[]).map(it=>card(it,cat,ct)).join('')}</div>`;document.getElementById('out-trends').innerHTML=`${d.resumo?`<div class="info-card ic-blue"><div class="ic-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></div><div class="ic-body">${d.resumo} — <strong>Clique nos cards</strong> para selecionar trends. Ao escolher 2 ou mais, o planejamento é gerado automaticamente.</div></div>`:''}<div class="trend-cols">${col(d.now,'col-now','Agora','Trending Now','gtag-now')}${col(d.emerging,'col-em','Emergindo','Emergindo','gtag-em')}${col(d.evergreen,'col-ev','Evergreen','Evergreen','gtag-ev')}</div>`}
 document.getElementById('inp-trends').addEventListener('keydown',e=>{if(e.key==='Enter')buscarTrends()});
 async function irParaPlano(){
   if(!selMap.size)return;
@@ -1148,19 +1180,37 @@ JSON sem markdown:
 
     console.log('RAW IRPARAPLANO RESPONSE:', raw);
 
-    const d=parseJSON(raw);
-    S.plano=d;
-    renderPlano(d,trends);
-    updCtx();
-    gerarEvCal(d);
+    let d=null;
+    try{
+      d=parseJSON(raw);
+    }catch(parseErr){
+      console.warn('irParaPlano parse fallback activated', parseErr);
+    }
+    if(d){
+      S.plano=d;
+      renderPlano(d,trends);
+      updCtx();
+      gerarEvCal(d);
+    }else if(raw){
+      renderPlanoFallback(raw,trends);
+    }else{
+      throw new Error('Resposta vazia da IA');
+    }
   }catch(e){
     console.error('irParaPlano error:',e);
     console.log('RAW IRPARAPLANO RESPONSE FULL:', raw);
     errC('out-plano',e?.message||'Falha.');
+  }finally{
+    if(pb2) pb2.style.display='none';
   }
 }
 
 function renderPlano(d,trends){const priBadge=p=>p==='alta'?`<span class="gtag gtag-now">Alta</span>`:p==='media'?`<span class="gtag gtag-em">Média</span>`:`<span class="gtag gtag-d">Baixa</span>`;const impBadge=p=>p==='alto'?`<span class="gtag gtag-now">Alto</span>`:p==='medio'?`<span class="gtag gtag-em">Médio</span>`:`<span class="gtag gtag-ev">Baixo</span>`;const SVG={s:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>`,c:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,ch:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.35h3a2 2 0 0 1 2 1.72c.128.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.572 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,k:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,r:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,ok:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,l:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`};const pb=(svg,t,badge,body,open=true)=>`<div class="pblock"><div class="pb-hd${open?' open':''}" onclick="togPB(this)"><div class="pb-ico">${svg}</div><span class="pb-title">${t}</span><span class="pb-badge">${badge}</span><span class="pb-ch${open?' open':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span></div><div class="pb-body${open?' open':''}">${body}</div></div>`;document.getElementById('out-plano').innerHTML=`${pb(SVG.s,'Posicionamento & Big Idea','Estratégia',`<div class="big-idea"><div class="bi-l">Big Idea</div><div class="bi-t">"${d.posicionamento?.big_idea||''}"</div></div><table class="data-table"><tr><td>Insight central</td><td>${d.posicionamento?.insight_central||''}</td></tr><tr><td>Território criativo</td><td>${d.posicionamento?.territorio_criativo||''}</td></tr><tr><td>Público primário</td><td>${d.posicionamento?.publico_primario||''}</td></tr><tr><td>Público secundário</td><td>${d.posicionamento?.publico_secundario||''}</td></tr><tr><td>Tom de voz</td><td>${d.posicionamento?.tom_de_voz||''}</td></tr></table>`)}${pb(SVG.c,'Calendário & Fases','Execução',`<div>${(d.fases||[]).map(f=>`<div class="tl-item"><div class="tl-ph">${f.fase}<span class="tl-per">${f.periodo}</span></div><div class="tl-b"><div class="tl-t">${f.titulo}</div><div class="tl-d">${f.descricao}</div><div class="tl-tags">${(f.acoes||[]).map(a=>`<span class="gtag gtag-d">${a}</span>`).join('')}${(f.formatos||[]).map(fm=>`<span class="gtag gtag-blue">${fm}</span>`).join('')}</div></div></div>`).join('')}</div>`)}${pb(SVG.ch,'Mix de Canais','Criativo',`<table class="data-table"><thead><tr><th>Canal</th><th>Prioridade</th><th>Conteúdo</th><th>Frequência</th></tr></thead><tbody>${(d.canais||[]).map(c=>`<tr><td>${c.canal}</td><td>${priBadge(c.prioridade)}</td><td>${c.tipo_conteudo}</td><td style="font-size:12px;color:var(--t3)">${c.frequencia}</td></tr>`).join('')}</tbody></table>`)}${pb(SVG.k,'KPIs & Métricas','Métricas',`<div class="kpi-grid">${(d.kpis||[]).map(k=>`<div class="kpi-c"><div class="kpi-l">${k.metrica}</div><div class="kpi-v">${k.meta}</div><div class="kpi-n">${k.periodo}</div></div>`).join('')}</div>`)}${pb(SVG.r,'Riscos & Mitigações','Estratégia',`<table class="data-table"><thead><tr><th>Risco</th><th>Impacto</th><th>Mitigação</th></tr></thead><tbody>${(d.riscos||[]).map(r=>`<tr><td>${r.risco}</td><td>${impBadge(r.impacto)}</td><td>${r.mitigacao}</td></tr>`).join('')}</tbody></table>`,false)}${pb(SVG.ok,'Próximos Passos','Execução',`<div>${(d.proximos_passos||[]).map((p,i)=>`<div class="step-row"><span class="step-n">${i+1}</span><span>${p}</span></div>`).join('')}</div>`)}${pb(SVG.l,'Fontes das Trends','Referências',`<div>${trends.map(t=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--b)"><div><div style="font-size:13px;font-weight:500;margin-bottom:2px">${t.titulo}</div><div style="font-size:12px;color:var(--t3)">${t.ctx}</div></div><div style="display:flex;gap:5px;align-items:center;flex-shrink:0;margin-left:12px"><span class="gtag gtag-d">${t.score}pts</span>${t.cat==='Trending Now'?'<span class="gtag gtag-now">Agora</span>':t.cat==='Emergindo'?'<span class="gtag gtag-em">Emergindo</span>':'<span class="gtag gtag-ev">Evergreen</span>'}${t.fonte?slink(t.fonte,t.q||t.titulo):''}</div></div>`).join('')}</div>`)}<div class="pa-row"><button class="gbutton gbutton-out" onclick="limparSel();go('trends',document.getElementById('ni-trends'),'Radar de Trends')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>Voltar</button><button class="gbutton gbutton-out" onclick="go('prompt',document.getElementById('ni-prompt'),'Prompt Studio')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/></svg>Prompt Studio</button><button class="gbutton gbutton-out" onclick="go('cal',document.getElementById('ni-cal'),'Calendário Editorial')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/></svg>Calendário</button><button class="gbutton" onclick="expPlano()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Exportar .txt</button></div>`}
+
+function renderPlanoFallback(raw,trends){
+  document.getElementById('out-plano').innerHTML=`<div class="info-card ic-default" style="margin-bottom:12px"><div class="ic-ico"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M12 20h9"/><path d="M12 4h9"/><path d="M4 9h16"/><path d="M4 15h16"/></svg></div><div class="ic-body"><strong>Planejamento gerado em modo texto.</strong> A IA não devolveu JSON perfeito desta vez, mas o conteúdo foi mantido abaixo para você não perder o resultado.</div></div><div class="gcard" style="white-space:pre-wrap;line-height:1.65">${esc(raw||'')}</div>${trends?.length?`<div style="margin-top:12px;font-size:13px;color:var(--t3)">Baseado em: ${trends.map(t=>t.titulo).join(' · ')}</div>`:''}`;
+}
+
 function togPB(h){const b=h.nextElementSibling,o=b.classList.toggle('open');h.classList.toggle('open',o);h.querySelector('.pb-ch').classList.toggle('open',o)}
 function expPlano(){const t=document.getElementById('out-plano').innerText;const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([t],{type:'text/plain'})),download:'ultrahype-planejamento.txt'});a.click()}
 async function gerarIdeias(){
@@ -1225,7 +1275,42 @@ Formato exato:
 
 function renderIdeias(ideias){if(!ideias.length){errC('out-ideias','Nenhuma ideia.');return}document.getElementById('out-ideias').innerHTML=ideias.map(id=>`<div class="idea"><div class="idea-top"><div class="idea-tr"><div class="idea-name">${id.titulo}</div><span class="lv lv-${id.nivel}">${id.nivel}</span></div><div class="idea-tl">"${id.tagline}"</div></div><div class="idea-body"><div class="idea-desc">${id.descricao}</div><div class="sub-lbl">Copy hooks</div>${(id.copys||[]).map(c=>`<div class="copy-row">${c}</div>`).join('')}${id.referencias?.length?`<div class="sub-lbl" style="margin-top:10px">Referências</div><div style="display:flex;gap:5px;flex-wrap:wrap">${id.referencias.map(r=>`<span class="gtag gtag-blue">${r}</span>`).join('')}</div>`:''}</div><div class="idea-foot"><span class="gtag gtag-d">${id.plataforma}</span><span class="gtag gtag-d">${id.janela}</span></div></div>`).join('')}
 document.getElementById('inp-ideias').addEventListener('keydown',e=>{if(e.key==='Enter')gerarIdeias()});
-function lerArq(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{document.getElementById('inp-briefing').value=e.target.result.slice(0,4000)};r.readAsText(f)}
+async function lerArq(input){
+  const f=input.files && input.files[0];
+  if(!f) return;
+  const ta=document.getElementById('inp-briefing');
+  try{
+    if(/pdf$/i.test(f.name) || f.type==='application/pdf'){
+      if(!window.pdfjsLib) throw new Error('Leitor de PDF não carregado');
+      ta.value='Lendo PDF…';
+      const buf=await f.arrayBuffer();
+      const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+      let txt='';
+      const maxPages=Math.min(pdf.numPages,8);
+      for(let i=1;i<=maxPages;i++){
+        const page=await pdf.getPage(i);
+        const content=await page.getTextContent();
+        const pageText=content.items.map(it=>it.str).join(' ');
+        txt += '
+
+' + pageText;
+        if(txt.length>12000) break;
+      }
+      ta.value=(txt||'').trim().slice(0,12000);
+      showToast('PDF importado para o briefing');
+    }else{
+      const r=new FileReader();
+      r.onload=e=>{ta.value=String(e.target.result||'').slice(0,12000);showToast('Arquivo importado');};
+      r.readAsText(f);
+    }
+  }catch(err){
+    console.error('lerArq error',err);
+    ta.value='';
+    showToast(err?.message || 'Não foi possível ler o arquivo');
+  } finally {
+    input.value='';
+  }
+}
 async function analisarBriefing(){
   let texto=document.getElementById('inp-briefing').value.trim();
   if(!texto)return;
@@ -1472,8 +1557,8 @@ const T = {
     // Briefing
     'briefing.eyebrow':'Estratégia','briefing.title':'Análise de <b>Briefing</b>',
     'briefing.sub':'Cole o briefing — a IA extrai produto, público, tom e cruza com as trends mais relevantes.',
-    'briefing.drop.title':'Arraste o arquivo aqui','briefing.drop.sub':'TXT — ou cole abaixo',
-    'briefing.placeholder':'Cole o briefing completo...','briefing.btn':'Analisar com IA',
+    'briefing.drop.title':'Arraste o arquivo aqui','briefing.drop.sub':'PDF ou TXT — ou cole abaixo',
+    'briefing.placeholder':'Cole o briefing completo...','briefing.btn':'Analisar briefing com IA',
     'briefing.loading':'Extraindo insights…',
     // Moodboard
     'mood.eyebrow':'Visual','mood.title':'Direção <b>Visual</b>',
@@ -1593,8 +1678,8 @@ const T = {
     'ideias.hint':'The AI will generate <strong>3 creative concepts</strong> with safe, bold and disruptive risk levels.',
     'briefing.eyebrow':'Strategy','briefing.title':'<b>Brief</b> Analysis',
     'briefing.sub':'Paste your brief — the AI extracts product, audience, tone and matches with the most relevant trends.',
-    'briefing.drop.title':'Drop your file here','briefing.drop.sub':'TXT — or paste below',
-    'briefing.placeholder':'Paste the full brief here...','briefing.btn':'Analyze with AI',
+    'briefing.drop.title':'Drop your file here','briefing.drop.sub':'PDF or TXT — or paste below',
+    'briefing.placeholder':'Paste the full brief here...','briefing.btn':'Analyze brief with AI',
     'briefing.loading':'Extracting insights…',
     'mood.eyebrow':'Visual','mood.title':'Visual <b>Direction</b>',
     'mood.sub':'Color palette, typography, creative references and visual keywords for production.',
@@ -2078,23 +2163,11 @@ function enviarContato(){
 }
 </script>
 
-<script>
-// FIX CLICK TCARD FALLBACK
-document.addEventListener('click', function(e){
-  const el = e.target.closest('.tcard');
-  if(!el) return;
-
-  if(typeof togCard === 'function'){
-    try{
-      const args = el.getAttribute('onclick');
-      if(args){
-        eval(args);
-      }
-    }catch(err){
-      console.error('tcard fallback error', err);
-    }
-  }
-});
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs" type="module"></script>
+<script type="module">
+  import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs';
+  window.pdfjsLib = pdfjsLib;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs';
 </script>
 
 </body>
