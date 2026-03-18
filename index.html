@@ -628,77 +628,105 @@ function esc(s){return(s||'').replace(/'/g,"&#39;").replace(/"/g,'&quot;')}
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
 async function cpText(text,btn){try{await navigator.clipboard.writeText(text);const o=btn.innerHTML;btn.innerHTML='✓ Copiado';showToast('Prompt copiado!');setTimeout(()=>btn.innerHTML=o,1800)}catch{showToast('Selecione o texto e pressione Ctrl+C')}}
 // ── ROBUST AI — smart JSON parser + retry + usage gate ──────
+
 function parseJSON(raw) {
+  if (!raw || typeof raw !== 'string') {
+    throw new Error('Resposta vazia da IA');
+  }
   let s = raw.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
-  try { return JSON.parse(s); } catch(_) {}
-  const start=s.search(/[\[{]/), end=Math.max(s.lastIndexOf('}'),s.lastIndexOf(']'));
-  if(start!==-1&&end!==-1){try{return JSON.parse(s.slice(start,end+1))}catch(_){}}
-  try{return JSON.parse(s.replace(/,\s*([}\]])/g,'$1').replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":'))}catch(_){}
+  try { return JSON.parse(s); } catch (_) {}
+  const start = s.search(/[\[{]/);
+  const end = Math.max(s.lastIndexOf('}'), s.lastIndexOf(']'));
+  if (start !== -1 && end !== -1) {
+    try { return JSON.parse(s.slice(start, end + 1)); } catch (_) {}
+  }
+  try {
+    return JSON.parse(
+      s
+        .replace(/,\s*([}\]])/g, '$1')
+        .replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":')
+    );
+  } catch (_) {}
   throw new Error('JSON parse failed');
 }
 async function ai(prompt,maxTokens=2000){
-  if(aiBusy){showToast(lang==='en'?'Wait for the current response to finish':'Aguarde a resposta atual terminar');return null;}
-  if(!await checkUsage()) return null;
+  if(aiBusy){
+    throw new Error(lang==='en'
+      ? 'Wait for the current response to finish'
+      : 'Aguarde a resposta atual terminar');
+  }
+  const allowed = await checkUsage();
+  if(!allowed){
+    throw new Error(lang==='en' ? 'Usage blocked' : 'Uso bloqueado no momento');
+  }
   aiBusy=true;
   try{
-    let authHeader={};
-    const token=currentSession&&currentSession.access_token?currentSession.access_token:null;
-    if(token){
-      authHeader={Authorization:'Bearer '+token};
-    }
+    const token=currentSession?.access_token || null;
     const res=await fetch('/api/chat',{
       method:'POST',
       headers:{
         'Content-Type':'application/json',
         'Accept':'application/json',
         'X-Requested-With':'XMLHttpRequest',
-        ...authHeader
+        ...(token ? { Authorization:'Bearer '+token } : {})
       },
       body:JSON.stringify({prompt,maxTokens})
     });
 
+    let data={};
+    try{
+      data=await res.json();
+    }catch(_){
+      data={};
+    }
+
     if(res.status===401){
       showToast(lang==='en'?'Sign in to use AI':'Faça login para usar a IA');
       showLoginModal('login');
-      return null;
+      throw new Error(data?.details || 'Unauthorized');
     }
 
     if(res.status===429){
-      const data=await res.json().catch(()=>({}));
-      if(data?.retry_after_ms){
-        usageCooldownUntil=Date.now()+Number(data.retry_after_ms||0);
+      const retryMs = Number(data?.retry_after_ms ?? data?.retryAfterMs ?? 0);
+
+      if(retryMs > 0){
+        usageCooldownUntil = Date.now() + retryMs;
         updateUsageBadge();
-        showToast((lang==='en'?'Wait ':'Aguarde ')+Math.max(1,Math.ceil((data.retry_after_ms||0)/1000))+'s');
+        showToast((lang==='en'?'Wait ':'Aguarde ')+Math.max(1,Math.ceil(retryMs/1000))+'s');
       }else{
         if(typeof data?.remaining==='number') usageRemaining=data.remaining;
         if(typeof data?.limit==='number') usageLimit=data.limit;
         updateUsageBadge();
-        showToast(data?.error || (lang==='en'?'Daily limit reached':'Limite diário atingido'));
+        showToast(data?.details || data?.error || (lang==='en'?'Daily limit reached':'Limite diário atingido'));
       }
-      return null;
+
+      throw new Error(data?.details || data?.error || 'Rate limited');
     }
 
     if(!res.ok){
-      const e=await res.json().catch(()=>({}));
-      throw new Error(e?.details||e?.error||`API ${res.status}`);
+      throw new Error(data?.details || data?.error || `API ${res.status}`);
     }
 
-    const data=await res.json();
     if(typeof data?.remaining==='number') usageRemaining=data.remaining;
     if(typeof data?.limit==='number') usageLimit=data.limit;
     usageCooldownUntil=Date.now()+4000;
     updateUsageBadge();
+
     const text=data?.text;
-    if(!text) throw new Error('Empty response');
+    if(!text || typeof text!=='string'){
+      throw new Error('Empty response');
+    }
+
     return text;
   }catch(e){
     console.error('ai error:',e);
-    showToast(lang==='en'?'Error generating response':'Erro ao gerar resposta');
+    showToast(e?.message || (lang==='en'?'Error generating response':'Erro ao gerar resposta'));
     throw e;
   }finally{
     aiBusy=false;
   }
 }
+
 // ── AUTH & CLOUD SAVE ───────────────────────────────────────
 function getLocalUser(){
   try{return JSON.parse(localStorage.getItem('uh-user')||'null')}catch(_){return null}
@@ -974,31 +1002,216 @@ renderHist();
 function updBar(){const n=selMap.size;document.getElementById('sel-n').textContent=n;document.getElementById('sel-bar').classList.toggle('on',n>0)}
 function limparSel(){selMap.clear();document.querySelectorAll('.tcard.sel').forEach(c=>c.classList.remove('sel'));updBar()}
 function togCard(id,titulo,ctx,cat,q,fonte,score){const el=document.getElementById(id);if(selMap.has(id)){selMap.delete(id);el.classList.remove('sel')}else{selMap.set(id,{titulo,ctx,cat,q,fonte,score});el.classList.add('sel')}updBar()}
-async function buscarTrends(){let tema=document.getElementById('inp-trends').value.trim();if(!tema)return;
-  // Sanitiza input do usuário antes de enviar
-  tema=tema.replace(/[<>&"'`]/g,'').replace(/\s+/g,' ').slice(0,200);
-  if(!tema)return;const btn=document.getElementById('btn-trends');btn.disabled=true;btn.textContent='Analisando...';const fontes=[...document.querySelectorAll('.chip.on')].map(s=>s.textContent.trim()).join(', ');sp('out-trends',`Consultando ${fontes}…`);const p=`Você é um analista de cultura digital e tendências para o mercado brasileiro.\nAnalise trends para o tema "${tema}" com base nas fontes: ${fontes}.\nRetorne APENAS JSON válido sem markdown:\n{"resumo":"2 frases factuais sobre o momento cultural deste tema no Brasil","now":[{"titulo":"","contexto":"","plataformas":"","tom":"positivo|neutro|negativo","fonte":"Wikipedia Trending|HackerNews|Google News|DuckDuckGo News|Reddit","query_busca":"","score":82,"credibilidade":"alta|media"}],"emerging":[{"titulo":"","contexto":"","plataformas":"","tom":"","fonte":"","query_busca":"","score":65,"credibilidade":""}],"evergreen":[{"titulo":"","contexto":"","plataformas":"","tom":"","fonte":"","query_busca":"","score":52,"credibilidade":""}]}\n3 itens por lista. score=oportunidade 0-100. Factual, Brasil.`;try{const raw=await ai(p);const d=parseJSON(raw);S.trends=d;S.tema_t=tema;renderTrends(d,tema);saveHist(tema);updCtx()}catch(e){errC('out-trends','Falha na análise.')}btn.disabled=false;btn.textContent='Analisar'}
+async function buscarTrends(){
+  const tema=(document.getElementById('inp-trends').value||'').trim();
+  if(!tema)return;
+
+  const btn=document.getElementById('btn-trends');
+  btn.disabled=true;
+  btn.textContent='Analisando...';
+
+  const fontes=[...document.querySelectorAll('.chip.on')].map(s=>s.textContent.trim()).join(', ');
+  sp('out-trends',`Consultando ${fontes}…`);
+
+  const p=`Você é um analista de cultura digital e tendências para o mercado brasileiro.
+Analise trends para o tema "${tema}" com base nas fontes: ${fontes}.
+Retorne APENAS JSON válido sem markdown:
+{"resumo":"2 frases factuais sobre o momento cultural deste tema no Brasil","now":[{"titulo":"","contexto":"","plataformas":"","tom":"positivo|neutro|negativo","fonte":"Wikipedia Trending|HackerNews|Google News|DuckDuckGo News|Reddit","query_busca":"","score":82,"credibilidade":"alta|media"}],"emerging":[{"titulo":"","contexto":"","plataformas":"","tom":"","fonte":"","query_busca":"","score":65,"credibilidade":""}],"evergreen":[{"titulo":"","contexto":"","plataformas":"","tom":"","fonte":"","query_busca":"","score":52,"credibilidade":""}]}
+3 itens por lista. score=oportunidade 0-100. Factual, Brasil.`;
+
+  try{
+    const raw=await ai(p);
+    if(!raw) throw new Error('Resposta vazia da IA');
+
+    const d=parseJSON(raw);
+    S.trends=d;
+    S.tema_t=tema;
+    renderTrends(d,tema);
+    saveHist(tema);
+    updCtx();
+  }catch(e){
+    console.error('buscarTrends error:',e);
+    errC('out-trends',e?.message||'Falha na análise.');
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Analisar';
+  }
+}
+
 function renderTrends(d,tema){const tom=t=>t==='positivo'?`<span class="gtag gtag-ev">+ positivo</span>`:t==='negativo'?`<span class="gtag gtag-now">− negativo</span>`:`<span class="gtag gtag-d">neutro</span>`;const scC=s=>s>=75?'sc-hi':s>=50?'sc-md':'sc-lo';const credB=c=>c==='alta'?`<span class="gtag gtag-ev" style="font-size:9px">✓ verificável</span>`:`<span class="gtag gtag-d" style="font-size:9px">verificar fonte</span>`;const card=(it,cat,ct)=>{const id='tc'+(++tcId),q=it.query_busca||it.titulo,sc=it.score||55;return`<div class="tcard" id="${id}" onclick="togCard('${id}','${esc(it.titulo)}','${esc(it.contexto)}','${cat}','${esc(q)}','${esc(it.fonte||'')}',${sc})"><div class="tcard-cb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="tcard-head"><div class="tcard-title">${it.titulo}</div><span class="tcard-score ${scC(sc)}">${sc}</span></div><div class="tcard-ctx">${it.contexto}</div><div class="tcard-foot"><span class="gtag ${ct}">${cat}</span><span class="gtag gtag-d">${it.plataformas}</span>${tom(it.tom)}${credB(it.credibilidade)}${it.fonte?slink(it.fonte,q):''}</div></div>`};const col=(items,cls,lbl,cat,ct)=>`<div class="${cls}"><div class="tcol-hd"><span class="col-dot"></span>${lbl}</div>${(items||[]).map(it=>card(it,cat,ct)).join('')}</div>`;document.getElementById('out-trends').innerHTML=`${d.resumo?`<div class="info-card ic-blue"><div class="ic-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></div><div class="ic-body">${d.resumo} — <strong>Clique nos cards</strong> para selecionar e gerar planejamento.</div></div>`:''}<div class="trend-cols">${col(d.now,'col-now','Agora','Trending Now','gtag-now')}${col(d.emerging,'col-em','Emergindo','Emergindo','gtag-em')}${col(d.evergreen,'col-ev','Evergreen','Evergreen','gtag-ev')}</div>`}
 document.getElementById('inp-trends').addEventListener('keydown',e=>{if(e.key==='Enter')buscarTrends()});
-async function irParaPlano(){if(!selMap.size)return;const pb2=document.getElementById('plano-cnt');if(pb2)pb2.style.display='inline';go('plano',document.getElementById('ni-plano'),'Planejamento Estratégico');const trends=[...selMap.values()];const cc=c=>c==='Trending Now'?'#d93025':c==='Emergindo'?'#f29900':'#1e8e3e';document.getElementById('plano-themes').innerHTML=`<div class="plan-themes">${trends.map(t=>`<span class="pt-tag"><span class="pt-dot" style="background:${cc(t.cat)}"></span>${t.titulo}<span style="font-size:10px;color:var(--t3);margin-left:5px;font-weight:400">${t.score}pts</span></span>`).join('')}</div>`;sp('out-plano','Gerando planejamento…');const p=`Estrategista de marketing sênior, mercado brasileiro.\nTrends: ${JSON.stringify(trends.map(t=>({titulo:t.titulo,contexto:t.ctx,categoria:t.cat,score:t.score})))}\nJSON sem markdown:\n{"posicionamento":{"big_idea":"","insight_central":"","territorio_criativo":"","publico_primario":"","publico_secundario":"","tom_de_voz":""},"fases":[{"fase":"Fase 1","periodo":"Semanas 1-2","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]},{"fase":"Fase 2","periodo":"Semanas 3-5","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]},{"fase":"Fase 3","periodo":"Semanas 6-8","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]}],"canais":[{"canal":"","prioridade":"alta|media|baixa","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""}],"kpis":[{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""}],"riscos":[{"risco":"","impacto":"alto|medio|baixo","mitigacao":""},{"risco":"","impacto":"","mitigacao":""},{"risco":"","impacto":"","mitigacao":""}],"proximos_passos":["","","","",""]}`;try{const raw=await ai(p,2500);const d=parseJSON(raw);S.plano=d;renderPlano(d,trends);updCtx();gerarEvCal(d)}catch(e){errC('out-plano','Falha.')}}
+async function irParaPlano(){
+  if(!selMap.size)return;
+  const pb2=document.getElementById('plano-cnt');
+  if(pb2)pb2.style.display='inline';
+
+  go('plano',document.getElementById('ni-plano'),'Planejamento Estratégico');
+
+  const trends=[...selMap.values()];
+  const cc=c=>c==='Trending Now'?'#d93025':c==='Emergindo'?'#f29900':'#1e8e3e';
+  document.getElementById('plano-themes').innerHTML=`<div class="plan-themes">${trends.map(t=>`<span class="pt-tag"><span class="pt-dot" style="background:${cc(t.cat)}"></span>${t.titulo}<span style="font-size:10px;color:var(--t3);margin-left:5px;font-weight:400">${t.score}pts</span></span>`).join('')}</div>`;
+
+  sp('out-plano','Gerando planejamento…');
+
+  const p=`Estrategista de marketing sênior, mercado brasileiro.
+Trends: ${JSON.stringify(trends.map(t=>({titulo:t.titulo,contexto:t.ctx,categoria:t.cat,score:t.score})))}
+JSON sem markdown:
+{"posicionamento":{"big_idea":"","insight_central":"","territorio_criativo":"","publico_primario":"","publico_secundario":"","tom_de_voz":""},"fases":[{"fase":"Fase 1","periodo":"Semanas 1-2","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]},{"fase":"Fase 2","periodo":"Semanas 3-5","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]},{"fase":"Fase 3","periodo":"Semanas 6-8","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]}],"canais":[{"canal":"","prioridade":"alta|media|baixa","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""}],"kpis":[{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""}],"riscos":[{"risco":"","impacto":"alto|medio|baixo","mitigacao":""},{"risco":"","impacto":"","mitigacao":""},{"risco":"","impacto":"","mitigacao":""}],"proximos_passos":["","","","",""]}`;
+
+  try{
+    const raw=await ai(p,2500);
+    if(!raw) throw new Error('Resposta vazia da IA');
+
+    const d=parseJSON(raw);
+    S.plano=d;
+    renderPlano(d,trends);
+    updCtx();
+    gerarEvCal(d);
+  }catch(e){
+    console.error('irParaPlano error:',e);
+    errC('out-plano',e?.message||'Falha.');
+  }
+}
+
 function renderPlano(d,trends){const priBadge=p=>p==='alta'?`<span class="gtag gtag-now">Alta</span>`:p==='media'?`<span class="gtag gtag-em">Média</span>`:`<span class="gtag gtag-d">Baixa</span>`;const impBadge=p=>p==='alto'?`<span class="gtag gtag-now">Alto</span>`:p==='medio'?`<span class="gtag gtag-em">Médio</span>`:`<span class="gtag gtag-ev">Baixo</span>`;const SVG={s:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>`,c:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,ch:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.35h3a2 2 0 0 1 2 1.72c.128.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.572 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,k:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,r:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,ok:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,l:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`};const pb=(svg,t,badge,body,open=true)=>`<div class="pblock"><div class="pb-hd${open?' open':''}" onclick="togPB(this)"><div class="pb-ico">${svg}</div><span class="pb-title">${t}</span><span class="pb-badge">${badge}</span><span class="pb-ch${open?' open':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span></div><div class="pb-body${open?' open':''}">${body}</div></div>`;document.getElementById('out-plano').innerHTML=`${pb(SVG.s,'Posicionamento & Big Idea','Estratégia',`<div class="big-idea"><div class="bi-l">Big Idea</div><div class="bi-t">"${d.posicionamento?.big_idea||''}"</div></div><table class="data-table"><tr><td>Insight central</td><td>${d.posicionamento?.insight_central||''}</td></tr><tr><td>Território criativo</td><td>${d.posicionamento?.territorio_criativo||''}</td></tr><tr><td>Público primário</td><td>${d.posicionamento?.publico_primario||''}</td></tr><tr><td>Público secundário</td><td>${d.posicionamento?.publico_secundario||''}</td></tr><tr><td>Tom de voz</td><td>${d.posicionamento?.tom_de_voz||''}</td></tr></table>`)}${pb(SVG.c,'Calendário & Fases','Execução',`<div>${(d.fases||[]).map(f=>`<div class="tl-item"><div class="tl-ph">${f.fase}<span class="tl-per">${f.periodo}</span></div><div class="tl-b"><div class="tl-t">${f.titulo}</div><div class="tl-d">${f.descricao}</div><div class="tl-tags">${(f.acoes||[]).map(a=>`<span class="gtag gtag-d">${a}</span>`).join('')}${(f.formatos||[]).map(fm=>`<span class="gtag gtag-blue">${fm}</span>`).join('')}</div></div></div>`).join('')}</div>`)}${pb(SVG.ch,'Mix de Canais','Criativo',`<table class="data-table"><thead><tr><th>Canal</th><th>Prioridade</th><th>Conteúdo</th><th>Frequência</th></tr></thead><tbody>${(d.canais||[]).map(c=>`<tr><td>${c.canal}</td><td>${priBadge(c.prioridade)}</td><td>${c.tipo_conteudo}</td><td style="font-size:12px;color:var(--t3)">${c.frequencia}</td></tr>`).join('')}</tbody></table>`)}${pb(SVG.k,'KPIs & Métricas','Métricas',`<div class="kpi-grid">${(d.kpis||[]).map(k=>`<div class="kpi-c"><div class="kpi-l">${k.metrica}</div><div class="kpi-v">${k.meta}</div><div class="kpi-n">${k.periodo}</div></div>`).join('')}</div>`)}${pb(SVG.r,'Riscos & Mitigações','Estratégia',`<table class="data-table"><thead><tr><th>Risco</th><th>Impacto</th><th>Mitigação</th></tr></thead><tbody>${(d.riscos||[]).map(r=>`<tr><td>${r.risco}</td><td>${impBadge(r.impacto)}</td><td>${r.mitigacao}</td></tr>`).join('')}</tbody></table>`,false)}${pb(SVG.ok,'Próximos Passos','Execução',`<div>${(d.proximos_passos||[]).map((p,i)=>`<div class="step-row"><span class="step-n">${i+1}</span><span>${p}</span></div>`).join('')}</div>`)}${pb(SVG.l,'Fontes das Trends','Referências',`<div>${trends.map(t=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--b)"><div><div style="font-size:13px;font-weight:500;margin-bottom:2px">${t.titulo}</div><div style="font-size:12px;color:var(--t3)">${t.ctx}</div></div><div style="display:flex;gap:5px;align-items:center;flex-shrink:0;margin-left:12px"><span class="gtag gtag-d">${t.score}pts</span>${t.cat==='Trending Now'?'<span class="gtag gtag-now">Agora</span>':t.cat==='Emergindo'?'<span class="gtag gtag-em">Emergindo</span>':'<span class="gtag gtag-ev">Evergreen</span>'}${t.fonte?slink(t.fonte,t.q||t.titulo):''}</div></div>`).join('')}</div>`)}<div class="pa-row"><button class="gbutton gbutton-out" onclick="limparSel();go('trends',document.getElementById('ni-trends'),'Radar de Trends')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>Voltar</button><button class="gbutton gbutton-out" onclick="go('prompt',document.getElementById('ni-prompt'),'Prompt Studio')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/></svg>Prompt Studio</button><button class="gbutton gbutton-out" onclick="go('cal',document.getElementById('ni-cal'),'Calendário Editorial')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/></svg>Calendário</button><button class="gbutton" onclick="expPlano()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Exportar .txt</button></div>`}
 function togPB(h){const b=h.nextElementSibling,o=b.classList.toggle('open');h.classList.toggle('open',o);h.querySelector('.pb-ch').classList.toggle('open',o)}
 function expPlano(){const t=document.getElementById('out-plano').innerText;const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([t],{type:'text/plain'})),download:'ultrahype-planejamento.txt'});a.click()}
-async function gerarIdeias(){const tema=document.getElementById('inp-ideias').value.trim();if(!tema)return;const btn=document.getElementById('btn-ideias');btn.disabled=true;btn.textContent='Gerando…';sp('out-ideias','Criando conceitos…');const p=`Diretor criativo top Brasil. 3 conceitos distintos para: "${tema}".\nJSON:{"ideias":[{"titulo":"","tagline":"","descricao":"","nivel":"safe|bold|disruptivo","plataforma":"","janela":"","copys":["","",""],"referencias":["",""]}]}\nBrasil, muito diferentes entre si.`;try{const raw=await ai(p);const d=parseJSON(raw);S.ideias=d.ideias;S.tema_i=tema;renderIdeias(d.ideias||[]);saveHist(tema);updCtx()}catch(e){errC('out-ideias','Erro.')}btn.disabled=false;btn.textContent='Gerar'}
+async function gerarIdeias(){
+  const tema=document.getElementById('inp-ideias').value.trim();
+  if(!tema)return;
+
+  const btn=document.getElementById('btn-ideias');
+  btn.disabled=true;
+  btn.textContent='Gerando…';
+  sp('out-ideias','Criando conceitos…');
+
+  const p=`Diretor criativo top Brasil. 3 conceitos distintos para: "${tema}".
+JSON:{"ideias":[{"titulo":"","tagline":"","descricao":"","nivel":"safe|bold|disruptivo","plataforma":"","janela":"","copys":["","",""],"referencias":["",""]}]}
+Brasil, muito diferentes entre si.`;
+
+  try{
+    const raw=await ai(p);
+    if(!raw) throw new Error('Resposta vazia da IA');
+
+    const d=parseJSON(raw);
+    S.ideias=d.ideias;
+    S.tema_i=tema;
+    renderIdeias(d.ideias||[]);
+    saveHist(tema);
+    updCtx();
+  }catch(e){
+    console.error('gerarIdeias error:',e);
+    errC('out-ideias',e?.message||'Erro.');
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Gerar';
+  }
+}
+
 function renderIdeias(ideias){if(!ideias.length){errC('out-ideias','Nenhuma ideia.');return}document.getElementById('out-ideias').innerHTML=ideias.map(id=>`<div class="idea"><div class="idea-top"><div class="idea-tr"><div class="idea-name">${id.titulo}</div><span class="lv lv-${id.nivel}">${id.nivel}</span></div><div class="idea-tl">"${id.tagline}"</div></div><div class="idea-body"><div class="idea-desc">${id.descricao}</div><div class="sub-lbl">Copy hooks</div>${(id.copys||[]).map(c=>`<div class="copy-row">${c}</div>`).join('')}${id.referencias?.length?`<div class="sub-lbl" style="margin-top:10px">Referências</div><div style="display:flex;gap:5px;flex-wrap:wrap">${id.referencias.map(r=>`<span class="gtag gtag-blue">${r}</span>`).join('')}</div>`:''}</div><div class="idea-foot"><span class="gtag gtag-d">${id.plataforma}</span><span class="gtag gtag-d">${id.janela}</span></div></div>`).join('')}
 document.getElementById('inp-ideias').addEventListener('keydown',e=>{if(e.key==='Enter')gerarIdeias()});
 function lerArq(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{document.getElementById('inp-briefing').value=e.target.result.slice(0,4000)};r.readAsText(f)}
-async function analisarBriefing(){let texto=document.getElementById('inp-briefing').value.trim();if(!texto)return;
-  texto=texto.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<[^>]{0,200}>/g,'').slice(0,4000);
-  if(!texto.trim())return;const btn=document.getElementById('btn-briefing');btn.disabled=true;btn.textContent='Analisando…';sp('out-briefing','Extraindo insights…');const p=`Estrategista de marketing. Briefing: "${texto}"\nJSON:{"produto":"","publico":"","tom":"","objetivos":["",""],"restricoes":[""],"trends_relevantes":[{"trend":"","fit_score":85,"justificativa":""},{"trend":"","fit_score":72,"justificativa":""},{"trend":"","fit_score":60,"justificativa":""}],"urgencia":7,"oportunidade":""}`;try{const raw=await ai(p);const d=parseJSON(raw);renderBriefing(d)}catch(e){errC('out-briefing','Erro.')}btn.disabled=false;btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Analisar com IA`}
+async function analisarBriefing(){
+  let texto=document.getElementById('inp-briefing').value.trim();
+  if(!texto)return;
+  if(!texto.trim())return;
+
+  const btn=document.getElementById('btn-briefing');
+  btn.disabled=true;
+  btn.textContent='Analisando…';
+  sp('out-briefing','Extraindo insights…');
+
+  const p=`Estrategista de marketing. Briefing: "${texto}"
+JSON:{"produto":"","publico":"","tom":"","objetivos":["",""],"restricoes":[""],"trends_relevantes":[{"trend":"","fit_score":85,"justificativa":""},{"trend":"","fit_score":72,"justificativa":""},{"trend":"","fit_score":60,"justificativa":""}],"urgencia":7,"oportunidade":""}`;
+
+  try{
+    const raw=await ai(p);
+    if(!raw) throw new Error('Resposta vazia da IA');
+
+    const d=parseJSON(raw);
+    renderBriefing(d);
+  }catch(e){
+    console.error('briefing error:',e);
+    errC('out-briefing',e?.message||'Erro.');
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Analisar com IA`;
+  }
+}
+
 function renderBriefing(d){const uc=d.urgencia>=8?'var(--red)':d.urgencia>=5?'var(--amber)':'var(--green)';const brow=(l,v)=>v?`<div class="data-row"><span class="data-lbl">${l}</span><span class="data-val">${v}</span></div>`:'';document.getElementById('out-briefing').innerHTML=`<div class="gcard">${brow('Produto',d.produto)}${brow('Público',d.publico)}${brow('Tom',d.tom)}${brow('Objetivos',Array.isArray(d.objetivos)?d.objetivos.join(' · '):d.objetivos)}${d.restricoes?.length?brow('Restrições',d.restricoes.join(' · ')):''}<div class="data-row"><span class="data-lbl">Urgência</span><span class="data-val" style="color:${uc};font-weight:600">${d.urgencia}/10</span></div>${d.oportunidade?brow('Janela',d.oportunidade):''}</div>${d.trends_relevantes?.length?`<div style="margin-top:12px;font-size:14px;font-weight:500;margin-bottom:8px;font-family:'Google Sans',sans-serif">Trends com maior fit</div><div class="gcard">${d.trends_relevantes.map(t=>`<div class="fit-item"><div class="fit-top"><span class="fit-name">${t.trend}</span><span class="fit-pct">${t.fit_score}%</span></div><div class="fit-bar"><div class="fit-fill" style="width:${t.fit_score}%"></div></div><div class="fit-why">${t.justificativa}</div></div>`).join('')}</div>`:''}`}
-async function gerarMoodboard(){const tema=document.getElementById('inp-mood').value.trim();if(!tema)return;const btn=document.getElementById('btn-mood');btn.disabled=true;btn.textContent='Criando…';sp('out-mood','Montando direção visual…');const p=`Diretor de arte brasileiro. Moodboard para: "${tema}".\nJSON:{"conceito_visual":"","paleta":[{"hex":"#2D4A3E","nome":"","uso":""},{"hex":"#F5E6D0","nome":"","uso":""},{"hex":"#C8453A","nome":"","uso":""},{"hex":"#1A1A2E","nome":"","uso":""},{"hex":"#E8C547","nome":"","uso":""}],"tipografias":[{"nome":"","estilo":"display|corpo","descricao":""},{"nome":"","estilo":"","descricao":""}],"texturas":["","",""],"referencias":[{"titulo":"","tipo":"campanha|filme|artista|movimento","descricao":""},{"titulo":"","tipo":"","descricao":""},{"titulo":"","tipo":"","descricao":""}],"palavras_visuais":["","","","","",""],"evitar":["",""]}\nCores reais. Ousado.`;try{const raw=await ai(p);const d=parseJSON(raw);S.moodboard=d;S.tema_m=tema;renderMoodboard(d);updCtx()}catch(e){errC('out-mood','Erro.')}btn.disabled=false;btn.textContent='Criar'}
+async function gerarMoodboard(){
+  const tema=document.getElementById('inp-mood').value.trim();
+  if(!tema)return;
+
+  const btn=document.getElementById('btn-mood');
+  btn.disabled=true;
+  btn.textContent='Criando…';
+  sp('out-mood','Montando direção visual…');
+
+  const p=`Diretor de arte brasileiro. Moodboard para: "${tema}".
+JSON:{"conceito_visual":"","paleta":[{"hex":"#2D4A3E","nome":"","uso":""},{"hex":"#F5E6D0","nome":"","uso":""},{"hex":"#C8453A","nome":"","uso":""},{"hex":"#1A1A2E","nome":"","uso":""},{"hex":"#E8C547","nome":"","uso":""}],"tipografias":[{"nome":"","estilo":"display|corpo","descricao":""},{"nome":"","estilo":"","descricao":""}],"texturas":["","",""],"referencias":[{"titulo":"","tipo":"campanha|filme|artista|movimento","descricao":""},{"titulo":"","tipo":"","descricao":""},{"titulo":"","tipo":"","descricao":""}],"palavras_visuais":["","","","","",""],"evitar":["",""]}
+Cores reais. Ousado.`;
+
+  try{
+    const raw=await ai(p);
+    if(!raw) throw new Error('Resposta vazia da IA');
+
+    const d=parseJSON(raw);
+    S.moodboard=d;
+    S.tema_m=tema;
+    renderMoodboard(d);
+    updCtx();
+  }catch(e){
+    console.error('gerarMoodboard error:',e);
+    errC('out-mood',e?.message||'Erro.');
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Criar';
+  }
+}
+
 function renderMoodboard(d){document.getElementById('out-mood').innerHTML=`<div class="mood-title">${d.conceito_visual||''}</div><div class="pal-row">${(d.paleta||[]).map(c=>`<div class="swatch" style="background:${c.hex}"><div class="sw-hex" style="color:${isLight(c.hex)?'rgba(0,0,0,.7)':'rgba(255,255,255,.9)'}">${c.hex}</div><div class="sw-name" style="color:${isLight(c.hex)?'rgba(0,0,0,.45)':'rgba(255,255,255,.6)'}">${c.nome}</div></div>`).join('')}</div><div class="md-grid"><div class="md-card"><div class="md-card-hd">Tipografias</div>${(d.tipografias||[]).map(t=>`<div class="md-row"><div>${t.nome}<div class="md-sub">${t.descricao}</div></div><span class="gtag gtag-d">${t.estilo}</span></div>`).join('')}</div><div class="md-card"><div class="md-card-hd">Texturas & materiais</div>${(d.texturas||[]).map(t=>`<div class="md-row">${t}</div>`).join('')}</div></div><div class="kw-cloud">${(d.palavras_visuais||[]).map(p=>`<span class="kw-tag">${p}</span>`).join('')}</div><div class="gcard" style="overflow:hidden"><div style="padding:10px 16px 4px;font-size:11px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:.06em">Referências criativas</div>${(d.referencias||[]).map(r=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:10px 16px;border-top:1px solid var(--b)"><div><div style="font-size:13px;font-weight:500;margin-bottom:2px">${r.titulo}</div><div style="font-size:12px;color:var(--t3)">${r.descricao}</div></div><span class="gtag gtag-d" style="margin-left:10px;flex-shrink:0">${r.tipo}</span></div>`).join('')}</div>${d.evitar?.length?`<div class="info-card ic-default" style="margin-top:10px;background:var(--amber-lt);border-color:rgba(242,153,0,.3)"><div class="ic-ico" style="background:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ic-body" style="color:var(--amber)"><strong>Evitar:</strong> ${d.evitar.join(' · ')}</div></div>`:''}`}
 document.getElementById('inp-mood').addEventListener('keydown',e=>{if(e.key==='Enter')gerarMoodboard()});
 function adjSc(d){scVal=Math.max(3,Math.min(20,scVal+d));document.getElementById('sc-v').textContent=scVal}
 function togFmt(el){document.querySelectorAll('.fmt-opt').forEach(f=>f.classList.remove('on'));el.classList.add('on')}
 function selType(t){curType=t;document.querySelectorAll('.type-card').forEach(c=>c.classList.remove('sel'));document.getElementById('tc-'+t).classList.add('sel');document.getElementById('area-rot').style.display='block'}
-async function gerarRoteiro(){const tema=document.getElementById('inp-rot').value.trim();if(!tema)return;const btn=document.getElementById('btn-rot');btn.disabled=true;btn.textContent='Gerando...';sp('out-rot','Criando…');const tipos={video:'roteiro de vídeo com cenas, narração e direção de câmera',reels:'script de Reels com hook, desenvolvimento e CTA',ppt:'estrutura de PPT com slides numerados, título, bullets e sugestão visual',pitch:'pitch deck para aprovação de campanha'};const p=`Redator criativo. ${tipos[curType]} para: "${tema}". Slides/cenas: ${scVal}. Formato: ${document.querySelector('.fmt-opt.on')?.textContent?.trim()||'16:9'}.\nJSON:{"tipo":"","tema":"","total":${scVal},"duracao_estimada":"","slides":[{"numero":1,"titulo":"","conteudo":"","narração":"","nota_visual":""}]}\n${scVal} itens. Brasil.`;try{const raw=await ai(p,2500);const d=parseJSON(raw);window._rotData=d;renderRoteiro(d)}catch(e){errC('out-rot','Erro.')}btn.disabled=false;btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg>Gerar conteúdo`}
+async function gerarRoteiro(){
+  const tema=document.getElementById('inp-rot').value.trim();
+  if(!tema)return;
+
+  const btn=document.getElementById('btn-rot');
+  btn.disabled=true;
+  btn.textContent='Gerando...';
+  sp('out-rot','Criando…');
+
+  const tipos={
+    video:'roteiro de vídeo com cenas, narração e direção de câmera',
+    reels:'script de Reels com hook, desenvolvimento e CTA',
+    ppt:'estrutura de PPT com slides numerados, título, bullets e sugestão visual',
+    pitch:'pitch deck para aprovação de campanha'
+  };
+
+  const p=`Redator criativo. ${tipos[curType]} para: "${tema}". Slides/cenas: ${scVal}. Formato: ${document.querySelector('.fmt-opt.on')?.textContent?.trim()||'16:9'}.
+JSON:{"tipo":"","tema":"","total":${scVal},"duracao_estimada":"","slides":[{"numero":1,"titulo":"","conteudo":"","narração":"","nota_visual":""}]}
+${scVal} itens. Brasil.`;
+
+  try{
+    const raw=await ai(p,2500);
+    if(!raw) throw new Error('Resposta vazia da IA');
+
+    const d=parseJSON(raw);
+    window._rotData=d;
+    renderRoteiro(d);
+  }catch(e){
+    console.error('gerarRoteiro error:',e);
+    errC('out-rot',e?.message||'Erro.');
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg>Gerar conteúdo`;
+  }
+}
+
 function renderRoteiro(d){document.getElementById('out-rot').innerHTML=`<div class="slide-out"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div><div style="font-size:15px;font-weight:500;font-family:'Google Sans',sans-serif">${d.tipo}</div><div style="font-size:12px;color:var(--t3);margin-top:1px">${d.total} itens · ${d.duracao_estimada}</div></div><span class="gtag gtag-ev">Pronto</span></div>${(d.slides||[]).map(s=>`<div class="slide-card"><div class="slide-num"><span class="slide-n">${s.numero}</span><span class="slide-title">${s.titulo}</span></div>${s.conteudo?`<div class="slide-body">${s.conteudo}</div>`:''}${s['narração']?`<div class="slide-narr"><span class="slide-narr-l">Narração</span>${s['narração']}</div>`:''}${s.nota_visual?`<div class="slide-vis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/></svg>${s.nota_visual}</div>`:''}</div>`).join('')}<div class="pa-row"><button class="gbutton" onclick="expRot()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Exportar roteiro</button></div></div>`}
 function expRot(){if(!window._rotData)return;const d=window._rotData;let t=`${d.tipo.toUpperCase()}\n${d.tema}\n${'─'.repeat(40)}\n\n`;(d.slides||[]).forEach(s=>{t+=`[${s.numero}] ${s.titulo}\n${s.conteudo||''}\n${s['narração']?`NARRAÇÃO: ${s['narração']}\n`:''}${s.nota_visual?`VISUAL: ${s.nota_visual}\n`:''}\n`});const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([t],{type:'text/plain'})),download:'ultrahype-roteiro.txt'});a.click()}
 function selPsCat(cat){curCat=cat;['video','imagem','ppt','texto'].forEach(c=>{document.getElementById('pscat-'+c).classList.toggle('on',c===cat);document.getElementById('ps-tools-'+c).style.display=c===cat?'flex':'none'})}
