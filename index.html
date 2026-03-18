@@ -1909,5 +1909,50 @@ document.addEventListener('click', function(e){
 });
 
 </script>
+
+<script>
+globalThis.currentUser = null;
+
+function loginUser(user){
+  globalThis.currentUser = user;
+  try { localStorage.setItem('uh-user', JSON.stringify(user)); } catch(e){}
+  try { updAuthUI(); } catch(e) { console.error(e); }
+  try { loadRefsState && loadRefsState(); } catch(e){}
+  try { loadCalendarState && loadCalendarState(); } catch(e){}
+  try { renderHist && renderHist(); } catch(e){}
+  try { renderRefs && renderRefs(); } catch(e){}
+  try { renderCal && renderCal(); } catch(e){}
+}
+
+function _startSupaAuth(){
+  var s = initSupa && initSupa();
+  if(!s) return;
+
+  s.auth.getSession().then(function(r){
+    var session = r?.data?.session;
+    if(session){
+      loginUser({
+        name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
+        email: session.user.email
+      });
+    }
+  });
+
+  s.auth.onAuthStateChange(function(event, session){
+    if(event === 'SIGNED_IN' && session){
+      loginUser({
+        name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
+        email: session.user.email
+      });
+    }
+    if(event === 'SIGNED_OUT'){
+      globalThis.currentUser = null;
+      localStorage.removeItem('uh-user');
+      try { updAuthUI(); } catch(e){}
+    }
+  });
+}
+</script>
+
 </body>
 </html>
