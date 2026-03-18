@@ -1,10 +1,9 @@
-import OpenAI from "openai";
+const XAI_API_KEY = process.env.XAI_API_KEY;
+const XAI_MODEL = process.env.XAI_MODEL || "grok-4";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const MAX_PROMPT_CHARS = 12000;
 
 function send(res, data, status = 200) {
@@ -67,10 +66,6 @@ function isValidCalendar(obj) {
   }
 
   return true;
-}
-
-function getContent(completion) {
-  return completion?.choices?.[0]?.message?.content ?? "";
 }
 
 function buildPlanPrompt(userInput) {
@@ -142,148 +137,312 @@ Formato desejado:
 `.trim();
 }
 
-async function generateWithSchema({ prompt, schemaName, schema }) {
-  const completion = await openai.chat.completions.create({
-    model: MODEL,
-    temperature: 0.2,
-    messages: [
+// =========================
+// xAI / GROK
+// =========================
+
+async function xaiChat(messages, temperature = 0.2, maxTokens = 2200) {
+  if (!XAI_API_KEY) {
+    throw new Error("XAI_API_KEY não configurada.");
+  }
+
+  const response = await fetch("https://api.x.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${XAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: XAI_MODEL,
+      stream: false,
+      temperature,
+      max_tokens: maxTokens,
+      messages,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 429) {
+    const err = new Error(data?.error?.message || "Rate limited");
+    err.status = 429;
+    throw err;
+  }
+
+  if (!response.ok) {
+    const err = new Error(data?.error?.message || "Erro na xAI");
+    err.status = response.status || 500;
+    throw err;
+  }
+
+  return data?.choices?.[0]?.message?.content || "";
+}
+
+async function xaiGeneratePlan(prompt) {
+  const content = await xaiChat(
+    [
       {
-        role: "developer",
-        content:
-          "Responda apenas com JSON válido e siga exatamente o schema definido.",
+        role: "system",
+        content: "Você responde apenas em JSON válido.",
+      },
+      {
+        role: "user",
+        content: buildPlanPrompt(prompt),
+      },
+    ],
+    0.2,
+    2200
+  );
+
+  return safeParseJson(content);
+}
+
+async function xaiGenerateCalendar(plan, extraContext) {
+  const content = await xaiChat(
+    [
+      {
+        role: "system",
+        content: "Você responde apenas em JSON válido.",
+      },
+      {
+        role: "user",
+        content: buildCalendarPrompt(plan, extraContext),
+      },
+    ],
+    0.2,
+    2600
+  );
+
+  return safeParseJson(content);
+}
+
+async function xaiGenerateText(prompt, maxTokens = 2000) {
+  return xaiChat(
+    [
+      {
+        role: "system",
+        content: "Responda em texto claro, legível e objetivo. Não use markdown complexo.",
       },
       {
         role: "user",
         content: prompt,
       },
     ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: schemaName,
-        strict: true,
-        schema,
+    0.3,
+    maxTokens
+  );
+}
+
+// =========================
+// GEMINI
+// =========================
+
+function getGeminiText(data) {
+  return (
+    data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || ""
+  );
+}
+
+const planSchema = {
+  type: "OBJECT",
+  properties: {
+    titulo: { type: "STRING" },
+    descricao: { type: "STRING" },
+    etapas: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          nome: { type: "STRING" },
+          acoes: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+          },
+        },
+        required: ["nome", "acoes"],
       },
     },
-  });
+  },
+  required: ["titulo", "descricao", "etapas"],
+};
 
-  return safeParseJson(getContent(completion));
-}
-
-async function generateWithJsonObject({ prompt }) {
-  const completion = await openai.chat.completions.create({
-    model: MODEL,
-    temperature: 0.2,
-    messages: [
-      {
-        role: "developer",
-        content:
-          "Responda apenas com JSON válido, sem markdown, sem comentários e sem texto extra.",
+const calendarSchema = {
+  type: "OBJECT",
+  properties: {
+    titulo: { type: "STRING" },
+    itens: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          data: { type: "STRING" },
+          tema: { type: "STRING" },
+          formato: { type: "STRING" },
+          canal: { type: "STRING" },
+          objetivo: { type: "STRING" },
+          cta: { type: "STRING" },
+        },
+        required: ["data", "tema", "formato", "canal", "objetivo", "cta"],
       },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-    response_format: {
-      type: "json_object",
     },
-  });
+  },
+  required: ["titulo", "itens"],
+};
 
-  return safeParseJson(getContent(completion));
+async function geminiGenerateJson({ prompt, schema }) {
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY não configurada.");
+  }
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: schema,
+        },
+      }),
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 429) {
+    const err = new Error(data?.error?.message || "Rate limited");
+    err.status = 429;
+    throw err;
+  }
+
+  if (!response.ok) {
+    const err = new Error(data?.error?.message || "Erro no Gemini");
+    err.status = response.status || 500;
+    throw err;
+  }
+
+  return safeParseJson(getGeminiText(data));
 }
 
-async function generateTextFallback(prompt) {
-  const completion = await openai.chat.completions.create({
-    model: MODEL,
-    temperature: 0.3,
-    messages: [
-      {
-        role: "developer",
-        content:
-          "Responda em texto claro, legível e objetivo. Não use markdown complexo.",
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
+async function geminiGeneratePlan(prompt) {
+  return geminiGenerateJson({
+    prompt: buildPlanPrompt(prompt),
+    schema: planSchema,
   });
-
-  return getContent(completion).trim();
 }
+
+async function geminiGenerateCalendar(plan, extraContext) {
+  return geminiGenerateJson({
+    prompt: buildCalendarPrompt(plan, extraContext),
+    schema: calendarSchema,
+  });
+}
+
+async function geminiGenerateText(prompt) {
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY não configurada.");
+  }
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: prompt }],
+          },
+        ],
+      }),
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 429) {
+    const err = new Error(data?.error?.message || "Rate limited");
+    err.status = 429;
+    throw err;
+  }
+
+  if (!response.ok) {
+    const err = new Error(data?.error?.message || "Erro no Gemini");
+    err.status = response.status || 500;
+    throw err;
+  }
+
+  return getGeminiText(data).trim();
+}
+
+// =========================
+// ORQUESTRADOR
+// =========================
 
 async function createPlan(userInput) {
   const debug = [];
   const prompt = buildPlanPrompt(userInput);
 
-  const schema = {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      titulo: { type: "string" },
-      descricao: { type: "string" },
-      etapas: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            nome: { type: "string" },
-            acoes: {
-              type: "array",
-              items: { type: "string" },
-            },
-          },
-          required: ["nome", "acoes"],
-        },
-      },
-    },
-    required: ["titulo", "descricao", "etapas"],
-  };
-
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const plan = await generateWithSchema({
-        prompt,
-        schemaName: "planejamento_marketing",
-        schema,
-      });
-
+      const plan = await xaiGeneratePlan(userInput);
       if (isValidPlan(plan)) {
-        return { ok: true, mode: "json_schema", data: plan };
+        return {
+          ok: true,
+          provider: "xai",
+          mode: "xai_json_prompt",
+          data: plan,
+          debug,
+        };
       }
-
-      debug.push(`schema attempt ${attempt}: estrutura inválida`);
+      debug.push(`xai attempt ${attempt}: estrutura inválida`);
     } catch (error) {
-      debug.push(`schema attempt ${attempt}: ${error.message}`);
+      debug.push(`xai attempt ${attempt}: ${error.message}`);
     }
   }
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const plan = await generateWithJsonObject({ prompt });
-
+      const plan = await geminiGeneratePlan(userInput);
       if (isValidPlan(plan)) {
-        return { ok: true, mode: "json_object_fallback", data: plan };
+        return {
+          ok: true,
+          provider: "gemini",
+          mode: "gemini_structured",
+          data: plan,
+          debug,
+        };
       }
-
-      debug.push(`json_object attempt ${attempt}: estrutura inválida`);
+      debug.push(`gemini attempt ${attempt}: estrutura inválida`);
     } catch (error) {
-      debug.push(`json_object attempt ${attempt}: ${error.message}`);
+      debug.push(`gemini attempt ${attempt}: ${error.message}`);
     }
   }
 
   try {
-    const rawText = await generateTextFallback(`
-Crie um planejamento de marketing em texto claro e organizado.
-
-Entrada:
-"""${userInput}"""
-    `.trim());
+    const rawText = XAI_API_KEY
+      ? await xaiGenerateText(
+          `Crie um planejamento de marketing em texto claro e organizado.\n\nEntrada:\n"""${userInput}"""`
+        )
+      : await geminiGenerateText(
+          `Crie um planejamento de marketing em texto claro e organizado.\n\nEntrada:\n"""${userInput}"""`
+        );
 
     return {
       ok: false,
+      provider: XAI_API_KEY ? "xai" : "gemini",
       mode: "text_fallback",
       error: "A IA não devolveu JSON válido para o planejamento.",
       fallback_text:
@@ -307,72 +466,55 @@ async function createCalendar(plan, extraContext = "") {
   const debug = [];
   const prompt = buildCalendarPrompt(plan, extraContext);
 
-  const schema = {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      titulo: { type: "string" },
-      itens: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            data: { type: "string" },
-            tema: { type: "string" },
-            formato: { type: "string" },
-            canal: { type: "string" },
-            objetivo: { type: "string" },
-            cta: { type: "string" },
-          },
-          required: ["data", "tema", "formato", "canal", "objetivo", "cta"],
-        },
-      },
-    },
-    required: ["titulo", "itens"],
-  };
-
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const calendar = await generateWithSchema({
-        prompt,
-        schemaName: "calendario_editorial",
-        schema,
-      });
-
+      const calendar = await xaiGenerateCalendar(plan, extraContext);
       if (isValidCalendar(calendar)) {
-        return { ok: true, mode: "json_schema", data: calendar };
+        return {
+          ok: true,
+          provider: "xai",
+          mode: "xai_json_prompt",
+          data: calendar,
+          debug,
+        };
       }
-
-      debug.push(`schema attempt ${attempt}: estrutura inválida`);
+      debug.push(`xai attempt ${attempt}: estrutura inválida`);
     } catch (error) {
-      debug.push(`schema attempt ${attempt}: ${error.message}`);
+      debug.push(`xai attempt ${attempt}: ${error.message}`);
     }
   }
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const calendar = await generateWithJsonObject({ prompt });
-
+      const calendar = await geminiGenerateCalendar(plan, extraContext);
       if (isValidCalendar(calendar)) {
-        return { ok: true, mode: "json_object_fallback", data: calendar };
+        return {
+          ok: true,
+          provider: "gemini",
+          mode: "gemini_structured",
+          data: calendar,
+          debug,
+        };
       }
-
-      debug.push(`json_object attempt ${attempt}: estrutura inválida`);
+      debug.push(`gemini attempt ${attempt}: estrutura inválida`);
     } catch (error) {
-      debug.push(`json_object attempt ${attempt}: ${error.message}`);
+      debug.push(`gemini attempt ${attempt}: ${error.message}`);
     }
   }
 
   try {
-    const rawText = await generateTextFallback(`
-Crie um calendário editorial em texto claro e organizado com base neste planejamento:
-
-${JSON.stringify(plan, null, 2)}
-    `.trim());
+    const rawText = XAI_API_KEY
+      ? await xaiGenerateText(
+          `Crie um calendário editorial em texto claro e organizado com base neste planejamento:\n\n${JSON.stringify(plan, null, 2)}`,
+          2600
+        )
+      : await geminiGenerateText(
+          `Crie um calendário editorial em texto claro e organizado com base neste planejamento:\n\n${JSON.stringify(plan, null, 2)}`
+        );
 
     return {
       ok: false,
+      provider: XAI_API_KEY ? "xai" : "gemini",
       mode: "text_fallback",
       error: "A IA não devolveu JSON válido para o calendário editorial.",
       fallback_text:
@@ -392,6 +534,10 @@ ${JSON.stringify(plan, null, 2)}
   }
 }
 
+// =========================
+// HANDLER
+// =========================
+
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     return send(res, { ok: true }, 200);
@@ -402,20 +548,65 @@ export default async function handler(req, res) {
   }
 
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    if (!XAI_API_KEY && !GEMINI_API_KEY) {
       return send(
         res,
         {
           ok: false,
-          error:
-            "Missing server environment variables: OPENAI_API_KEY não configurada.",
+          error: "Configure pelo menos XAI_API_KEY ou GEMINI_API_KEY.",
         },
         500
       );
     }
 
     const body = req.body || {};
-    const action = normalizeText(body.action || "plan");
+    const hasExplicitAction = isNonEmptyString(body.action);
+    const action = normalizeText(body.action);
+
+    // =========================
+    // COMPATIBILIDADE COM INDEX ANTIGO
+    // Se vier só { prompt, maxTokens } sem action,
+    // devolve { text } como o front antigo espera.
+    // =========================
+    if (!hasExplicitAction && body.prompt) {
+      const prompt = truncateText(normalizeText(body.prompt));
+      const maxTokens = Number(body.maxTokens || 2000);
+
+      try {
+        const text = await xaiGenerateText(prompt, maxTokens);
+        return send(res, {
+          ok: true,
+          provider: "xai",
+          text,
+        });
+      } catch (xaiError) {
+        try {
+          const text = await geminiGenerateText(prompt);
+          return send(res, {
+            ok: true,
+            provider: "gemini",
+            text,
+          });
+        } catch (geminiError) {
+          const status =
+            xaiError?.status === 429 || geminiError?.status === 429 ? 429 : 500;
+
+          return send(
+            res,
+            {
+              ok: false,
+              error: `Falha xAI: ${xaiError.message} | Falha Gemini: ${geminiError.message}`,
+              details: `Falha xAI: ${xaiError.message} | Falha Gemini: ${geminiError.message}`,
+            },
+            status
+          );
+        }
+      }
+    }
+
+    // =========================
+    // NOVO FLUXO
+    // =========================
 
     if (action === "plan") {
       const prompt = truncateText(
@@ -434,14 +625,18 @@ export default async function handler(req, res) {
         return send(res, {
           ok: true,
           action: "plan",
+          provider: result.provider,
           mode: result.mode,
           data: result.data,
+          text: JSON.stringify(result.data),
+          debug: result.debug,
         });
       }
 
       return send(res, {
         ok: false,
         action: "plan",
+        provider: result.provider,
         mode: result.mode,
         error: result.error,
         fallback_text: result.fallback_text,
@@ -471,14 +666,18 @@ export default async function handler(req, res) {
         return send(res, {
           ok: true,
           action: "calendar",
+          provider: result.provider,
           mode: result.mode,
           data: result.data,
+          text: JSON.stringify(result.data),
+          debug: result.debug,
         });
       }
 
       return send(res, {
         ok: false,
         action: "calendar",
+        provider: result.provider,
         mode: result.mode,
         error: result.error,
         fallback_text: result.fallback_text,
