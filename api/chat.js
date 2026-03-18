@@ -1,506 +1,503 @@
-import { createClient } from '@supabase/supabase-js';
+import OpenAI from "openai";
 
-export const runtime = 'nodejs';
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-const DAILY_LIMIT = 30;
-const COOLDOWN_MS = 4000;
+const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const MAX_PROMPT_CHARS = 12000;
 
-function json(res, status, body, extraHeaders = {}) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
-  for (const [k, v] of Object.entries(extraHeaders)) {
-    res.setHeader(k, v);
-  }
-  res.end(JSON.stringify(body));
+function send(res, data, status = 200) {
+  return res.status(status).json(data);
 }
 
-function getRequestId() {
-  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+function normalizeText(value) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
-function getEnv() {
-  const env = {
-    SUPABASE_URL: process.env.SUPABASE_URL?.trim(),
-    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY?.trim(),
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY?.trim(),
-    GEMINI_MODEL: process.env.GEMINI_MODEL?.trim() || 'gemini-1.5-flash',
-    GROQ_API_KEY: process.env.GROQ_API_KEY?.trim(),
-    GROK_API_KEY: process.env.GROK_API_KEY?.trim(),
-    GROQ_MODEL: process.env.GROQ_MODEL?.trim() || 'llama-3.1-70b-versatile',
-    ALLOWED_ORIGIN: process.env.ALLOWED_ORIGIN?.trim() || '*',
-    VERCEL_ENV: process.env.VERCEL_ENV || 'unknown',
-  };
-
-  const groqLikeKey = env.GROQ_API_KEY || env.GROK_API_KEY;
-
-  const missing = [];
-  if (!env.SUPABASE_URL) missing.push('SUPABASE_URL');
-  if (!env.SUPABASE_ANON_KEY) missing.push('SUPABASE_ANON_KEY');
-  if (!env.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
-  if (!env.GEMINI_API_KEY && !groqLikeKey) {
-    missing.push('GEMINI_API_KEY or GROQ_API_KEY/GROK_API_KEY');
-  }
-
-  return {
-    env,
-    groqLikeKey,
-    missing,
-    hasMissing: missing.length > 0,
-    flags: {
-      hasSupabaseUrl: !!env.SUPABASE_URL,
-      hasSupabaseAnonKey: !!env.SUPABASE_ANON_KEY,
-      hasSupabaseServiceRoleKey: !!env.SUPABASE_SERVICE_ROLE_KEY,
-      hasGeminiApiKey: !!env.GEMINI_API_KEY,
-      hasGroqApiKey: !!env.GROQ_API_KEY,
-      hasGrokApiKey: !!env.GROK_API_KEY,
-    },
-  };
+function truncateText(text, max = MAX_PROMPT_CHARS) {
+  if (!text) return "";
+  return text.length > max ? text.slice(0, max) : text;
 }
 
-function getCorsHeaders(req, allowedOrigin) {
-  const reqOrigin = req.headers.origin || '';
-  const allowOrigin =
-    allowedOrigin === '*'
-      ? '*'
-      : reqOrigin === allowedOrigin
-        ? allowedOrigin
-        : allowedOrigin;
-
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
+function cleanJsonText(text) {
+  return String(text || "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
 }
 
-async function readJsonBody(req) {
-  if (req.body && typeof req.body === 'object') return req.body;
-
-  return await new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', (chunk) => {
-      data += chunk;
-    });
-    req.on('end', () => {
-      try {
-        resolve(data ? JSON.parse(data) : {});
-      } catch (err) {
-        reject(new Error('Invalid JSON body'));
-      }
-    });
-    req.on('error', reject);
-  });
+function safeParseJson(text) {
+  return JSON.parse(cleanJsonText(text));
 }
 
-function getBearerToken(req) {
-  const auth = req.headers.authorization || req.headers.Authorization || '';
-  if (!auth.startsWith('Bearer ')) return null;
-  return auth.slice(7).trim() || null;
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.trim().length > 0;
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+function isValidPlan(obj) {
+  if (!obj || typeof obj !== "object") return false;
+  if (!isNonEmptyString(obj.titulo)) return false;
+  if (typeof obj.descricao !== "string") return false;
+  if (!Array.isArray(obj.etapas)) return false;
 
-async function ensureAuthenticatedUser(adminClient, accessToken) {
-  if (!accessToken) {
-    return { user: null, error: 'Missing bearer token' };
+  for (const etapa of obj.etapas) {
+    if (!etapa || typeof etapa !== "object") return false;
+    if (!isNonEmptyString(etapa.nome)) return false;
+    if (!Array.isArray(etapa.acoes)) return false;
+    if (!etapa.acoes.every((a) => typeof a === "string")) return false;
   }
 
-  const { data, error } = await adminClient.auth.getUser(accessToken);
-
-  if (error || !data?.user) {
-    return { user: null, error: error?.message || 'Invalid token' };
-  }
-
-  return { user: data.user, error: null };
+  return true;
 }
 
-async function enforceCooldown(adminClient, userId) {
-  const now = Date.now();
+function isValidCalendar(obj) {
+  if (!obj || typeof obj !== "object") return false;
+  if (!isNonEmptyString(obj.titulo)) return false;
+  if (!Array.isArray(obj.itens)) return false;
 
-  const { data, error } = await adminClient
-    .from('user_rate_limits')
-    .select('user_id,last_request_at')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Cooldown lookup failed: ${error.message}`);
+  for (const item of obj.itens) {
+    if (!item || typeof item !== "object") return false;
+    if (!isNonEmptyString(item.data)) return false;
+    if (!isNonEmptyString(item.tema)) return false;
+    if (!isNonEmptyString(item.formato)) return false;
+    if (!isNonEmptyString(item.canal)) return false;
+    if (!isNonEmptyString(item.objetivo)) return false;
+    if (typeof item.cta !== "string") return false;
   }
 
-  const last = data?.last_request_at ? new Date(data.last_request_at).getTime() : 0;
-  const diff = now - last;
+  return true;
+}
 
-  if (last && diff < COOLDOWN_MS) {
-    const retryAfterMs = COOLDOWN_MS - diff;
-    return {
-      allowed: false,
-      retryAfterMs,
-    };
-  }
+function getContent(completion) {
+  return completion?.choices?.[0]?.message?.content ?? "";
+}
 
-  const { error: upsertError } = await adminClient
-    .from('user_rate_limits')
-    .upsert(
+function buildPlanPrompt(userInput) {
+  return `
+Você é um estrategista sênior de marketing e conteúdo.
+
+Sua tarefa é criar um planejamento claro, objetivo, acionável e útil para um produto SaaS.
+
+Regras:
+- Responda em português do Brasil.
+- Seja específico e direto.
+- Não escreva nada fora do JSON.
+- Evite floreios.
+- Se faltar contexto, faça a melhor inferência possível sem inventar dados absurdos.
+- Organize as ações em etapas lógicas.
+- As ações devem ser práticas e executáveis.
+
+Entrada do usuário:
+"""${userInput}"""
+
+Formato desejado:
+{
+  "titulo": "string",
+  "descricao": "string",
+  "etapas": [
+    {
+      "nome": "string",
+      "acoes": ["string"]
+    }
+  ]
+}
+`.trim();
+}
+
+function buildCalendarPrompt(plan, extraContext = "") {
+  return `
+Você é um estrategista de conteúdo e social media.
+
+Crie um calendário editorial claro e prático com base no planejamento abaixo.
+
+Planejamento:
+${JSON.stringify(plan, null, 2)}
+
+Contexto adicional:
+"""${extraContext || "Nenhum contexto adicional informado."}"""
+
+Regras:
+- Responda em português do Brasil.
+- Não escreva nada fora do JSON.
+- Crie ideias realistas e coerentes com o planejamento.
+- Misture formatos quando fizer sentido.
+- Distribua os conteúdos de forma organizada.
+- Você pode sugerir datas em sequência, mesmo sem mês exato informado.
+
+Formato desejado:
+{
+  "titulo": "string",
+  "itens": [
+    {
+      "data": "string",
+      "tema": "string",
+      "formato": "string",
+      "canal": "string",
+      "objetivo": "string",
+      "cta": "string"
+    }
+  ]
+}
+`.trim();
+}
+
+async function generateWithSchema({ prompt, schemaName, schema }) {
+  const completion = await openai.chat.completions.create({
+    model: MODEL,
+    temperature: 0.2,
+    messages: [
       {
-        user_id: userId,
-        last_request_at: new Date(now).toISOString(),
-        updated_at: new Date(now).toISOString(),
+        role: "developer",
+        content:
+          "Responda apenas com JSON válido e siga exatamente o schema definido.",
       },
-      { onConflict: 'user_id' }
-    );
-
-  if (upsertError) {
-    throw new Error(`Cooldown update failed: ${upsertError.message}`);
-  }
-
-  return { allowed: true, retryAfterMs: 0 };
-}
-
-async function enforceDailyLimit(adminClient, userId) {
-  const day = todayISO();
-
-  const { data, error } = await adminClient
-    .from('user_usage')
-    .select('user_id,day,request_count')
-    .eq('user_id', userId)
-    .eq('day', day)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Usage lookup failed: ${error.message}`);
-  }
-
-  const currentCount = data?.request_count || 0;
-
-  if (currentCount >= DAILY_LIMIT) {
-    return {
-      allowed: false,
-      remaining: 0,
-      used: currentCount,
-      limit: DAILY_LIMIT,
-    };
-  }
-
-  const nextCount = currentCount + 1;
-
-  const { error: upsertError } = await adminClient
-    .from('user_usage')
-    .upsert(
       {
-        user_id: userId,
-        day,
-        request_count: nextCount,
-        updated_at: new Date().toISOString(),
+        role: "user",
+        content: prompt,
       },
-      { onConflict: 'user_id,day' }
-    );
-
-  if (upsertError) {
-    throw new Error(`Usage update failed: ${upsertError.message}`);
-  }
-
-  return {
-    allowed: true,
-    remaining: Math.max(0, DAILY_LIMIT - nextCount),
-    used: nextCount,
-    limit: DAILY_LIMIT,
-  };
-}
-
-async function callGroq({ apiKey, model, prompt, system }) {
-  const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: schemaName,
+        strict: true,
+        schema,
+      },
     },
-    body: JSON.stringify({
-      model,
-      temperature: 0.7,
-      messages: [
-        ...(system ? [{ role: 'system', content: system }] : []),
-        { role: 'user', content: prompt },
-      ],
-    }),
   });
 
-  const raw = await r.text();
-  let data = null;
-
-  try {
-    data = raw ? JSON.parse(raw) : null;
-  } catch {
-    data = null;
-  }
-
-  if (!r.ok) {
-    throw new Error(
-      data?.error?.message ||
-      data?.message ||
-      `Groq HTTP ${r.status}`
-    );
-  }
-
-  const text = data?.choices?.[0]?.message?.content?.trim();
-
-  if (!text) {
-    throw new Error('Groq returned empty response');
-  }
-
-  return {
-    provider: 'groq',
-    text,
-    raw: data,
-  };
+  return safeParseJson(getContent(completion));
 }
 
-async function callGemini({ apiKey, model, prompt, system }) {
-  const fullPrompt = system
-    ? `${system}\n\nUser:\n${prompt}`
-    : prompt;
+async function generateWithJsonObject({ prompt }) {
+  const completion = await openai.chat.completions.create({
+    model: MODEL,
+    temperature: 0.2,
+    messages: [
+      {
+        role: "developer",
+        content:
+          "Responda apenas com JSON válido, sem markdown, sem comentários e sem texto extra.",
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    response_format: {
+      type: "json_object",
+    },
+  });
 
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  return safeParseJson(getContent(completion));
+}
 
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [{ text: fullPrompt }],
+async function generateTextFallback(prompt) {
+  const completion = await openai.chat.completions.create({
+    model: MODEL,
+    temperature: 0.3,
+    messages: [
+      {
+        role: "developer",
+        content:
+          "Responda em texto claro, legível e objetivo. Não use markdown complexo.",
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+  });
+
+  return getContent(completion).trim();
+}
+
+async function createPlan(userInput) {
+  const debug = [];
+  const prompt = buildPlanPrompt(userInput);
+
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      titulo: { type: "string" },
+      descricao: { type: "string" },
+      etapas: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            nome: { type: "string" },
+            acoes: {
+              type: "array",
+              items: { type: "string" },
+            },
+          },
+          required: ["nome", "acoes"],
         },
-      ],
-      generationConfig: {
-        temperature: 0.7,
       },
-    }),
-  });
+    },
+    required: ["titulo", "descricao", "etapas"],
+  };
 
-  const raw = await r.text();
-  let data = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const plan = await generateWithSchema({
+        prompt,
+        schemaName: "planejamento_marketing",
+        schema,
+      });
+
+      if (isValidPlan(plan)) {
+        return { ok: true, mode: "json_schema", data: plan };
+      }
+
+      debug.push(`schema attempt ${attempt}: estrutura inválida`);
+    } catch (error) {
+      debug.push(`schema attempt ${attempt}: ${error.message}`);
+    }
+  }
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const plan = await generateWithJsonObject({ prompt });
+
+      if (isValidPlan(plan)) {
+        return { ok: true, mode: "json_object_fallback", data: plan };
+      }
+
+      debug.push(`json_object attempt ${attempt}: estrutura inválida`);
+    } catch (error) {
+      debug.push(`json_object attempt ${attempt}: ${error.message}`);
+    }
+  }
 
   try {
-    data = raw ? JSON.parse(raw) : null;
-  } catch {
-    data = null;
+    const rawText = await generateTextFallback(`
+Crie um planejamento de marketing em texto claro e organizado.
+
+Entrada:
+"""${userInput}"""
+    `.trim());
+
+    return {
+      ok: false,
+      mode: "text_fallback",
+      error: "A IA não devolveu JSON válido para o planejamento.",
+      fallback_text:
+        "Planejamento gerado em modo texto. A IA não devolveu JSON perfeito desta vez, mas o conteúdo foi mantido abaixo para você não perder o resultado.",
+      raw_text: rawText,
+      debug,
+    };
+  } catch (error) {
+    debug.push(`text fallback: ${error.message}`);
+
+    return {
+      ok: false,
+      mode: "hard_fail",
+      error: "Falha ao gerar planejamento.",
+      debug,
+    };
   }
-
-  if (!r.ok) {
-    throw new Error(
-      data?.error?.message ||
-      data?.message ||
-      `Gemini HTTP ${r.status}`
-    );
-  }
-
-  const text =
-    data?.candidates?.[0]?.content?.parts
-      ?.map((p) => p?.text || '')
-      .join('')
-      .trim() || '';
-
-  if (!text) {
-    throw new Error('Gemini returned empty response');
-  }
-
-  return {
-    provider: 'gemini',
-    text,
-    raw: data,
-  };
 }
 
-async function generateWithFallback({ env, groqLikeKey, prompt, system, requestId }) {
-  const errors = [];
+async function createCalendar(plan, extraContext = "") {
+  const debug = [];
+  const prompt = buildCalendarPrompt(plan, extraContext);
 
-  if (groqLikeKey) {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      titulo: { type: "string" },
+      itens: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            data: { type: "string" },
+            tema: { type: "string" },
+            formato: { type: "string" },
+            canal: { type: "string" },
+            objetivo: { type: "string" },
+            cta: { type: "string" },
+          },
+          required: ["data", "tema", "formato", "canal", "objetivo", "cta"],
+        },
+      },
+    },
+    required: ["titulo", "itens"],
+  };
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const out = await callGroq({
-        apiKey: groqLikeKey,
-        model: env.GROQ_MODEL,
+      const calendar = await generateWithSchema({
         prompt,
-        system,
+        schemaName: "calendario_editorial",
+        schema,
       });
-      return out;
-    } catch (err) {
-      errors.push(`groq: ${err.message}`);
-      console.error('[api/chat] provider groq failed', {
-        requestId,
-        message: err.message,
-      });
+
+      if (isValidCalendar(calendar)) {
+        return { ok: true, mode: "json_schema", data: calendar };
+      }
+
+      debug.push(`schema attempt ${attempt}: estrutura inválida`);
+    } catch (error) {
+      debug.push(`schema attempt ${attempt}: ${error.message}`);
     }
   }
 
-  if (env.GEMINI_API_KEY) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const out = await callGemini({
-        apiKey: env.GEMINI_API_KEY,
-        model: env.GEMINI_MODEL,
-        prompt,
-        system,
-      });
-      return out;
-    } catch (err) {
-      errors.push(`gemini: ${err.message}`);
-      console.error('[api/chat] provider gemini failed', {
-        requestId,
-        message: err.message,
-      });
+      const calendar = await generateWithJsonObject({ prompt });
+
+      if (isValidCalendar(calendar)) {
+        return { ok: true, mode: "json_object_fallback", data: calendar };
+      }
+
+      debug.push(`json_object attempt ${attempt}: estrutura inválida`);
+    } catch (error) {
+      debug.push(`json_object attempt ${attempt}: ${error.message}`);
     }
   }
 
-  throw new Error(
-    errors.length
-      ? `All providers failed: ${errors.join(' | ')}`
-      : 'No AI provider configured'
-  );
+  try {
+    const rawText = await generateTextFallback(`
+Crie um calendário editorial em texto claro e organizado com base neste planejamento:
+
+${JSON.stringify(plan, null, 2)}
+    `.trim());
+
+    return {
+      ok: false,
+      mode: "text_fallback",
+      error: "A IA não devolveu JSON válido para o calendário editorial.",
+      fallback_text:
+        "Calendário editorial gerado em modo texto. A IA não devolveu JSON perfeito desta vez, mas o conteúdo foi mantido abaixo para você não perder o resultado.",
+      raw_text: rawText,
+      debug,
+    };
+  } catch (error) {
+    debug.push(`text fallback: ${error.message}`);
+
+    return {
+      ok: false,
+      mode: "hard_fail",
+      error: "Falha ao gerar calendário editorial.",
+      debug,
+    };
+  }
 }
 
 export default async function handler(req, res) {
-  const requestId = getRequestId();
-  const startedAt = Date.now();
+  if (req.method === "OPTIONS") {
+    return send(res, { ok: true }, 200);
+  }
 
-  const runtime = getEnv();
-  const corsHeaders = getCorsHeaders(req, runtime.env.ALLOWED_ORIGIN);
-
-  if (req.method === 'OPTIONS') {
-    return json(res, 204, {}, corsHeaders);
+  if (req.method !== "POST") {
+    return send(res, { ok: false, error: "Method not allowed." }, 405);
   }
 
   try {
-    if (req.method !== 'POST') {
-      return json(res, 405, {
-        ok: false,
-        error: 'method_not_allowed',
-        details: 'Use POST.',
-        requestId,
-      }, corsHeaders);
+    if (!process.env.OPENAI_API_KEY) {
+      return send(
+        res,
+        {
+          ok: false,
+          error:
+            "Missing server environment variables: OPENAI_API_KEY não configurada.",
+        },
+        500
+      );
     }
 
-    if (runtime.hasMissing) {
-      console.error('[api/chat] missing envs', {
-        requestId,
-        missing: runtime.missing,
-        flags: runtime.flags,
-        vercelEnv: runtime.env.VERCEL_ENV,
-      });
+    const body = req.body || {};
+    const action = normalizeText(body.action || "plan");
 
-      return json(res, 500, {
-        ok: false,
-        error: 'server_misconfigured',
-        details: `Missing server environment variables: ${runtime.missing.join(', ')}`,
-        missing: runtime.missing,
-        vercelEnv: runtime.env.VERCEL_ENV,
-        requestId,
-      }, corsHeaders);
-    }
+    if (action === "plan") {
+      const prompt = truncateText(
+        normalizeText(body.prompt) ||
+          normalizeText(body.message) ||
+          normalizeText(body.briefing)
+      );
 
-    const adminClient = createClient(
-      runtime.env.SUPABASE_URL,
-      runtime.env.SUPABASE_SERVICE_ROLE_KEY,
-      {
-        auth: { persistSession: false, autoRefreshToken: false },
+      if (!prompt) {
+        return send(res, { ok: false, error: "Prompt vazio." }, 400);
       }
+
+      const result = await createPlan(prompt);
+
+      if (result.ok) {
+        return send(res, {
+          ok: true,
+          action: "plan",
+          mode: result.mode,
+          data: result.data,
+        });
+      }
+
+      return send(res, {
+        ok: false,
+        action: "plan",
+        mode: result.mode,
+        error: result.error,
+        fallback_text: result.fallback_text,
+        raw_text: result.raw_text,
+        debug: result.debug,
+      });
+    }
+
+    if (action === "calendar") {
+      const plan = body.plan;
+      const extraContext = truncateText(normalizeText(body.extraContext));
+
+      if (!isValidPlan(plan)) {
+        return send(
+          res,
+          {
+            ok: false,
+            error: "Planejamento inválido ou ausente para gerar calendário.",
+          },
+          400
+        );
+      }
+
+      const result = await createCalendar(plan, extraContext);
+
+      if (result.ok) {
+        return send(res, {
+          ok: true,
+          action: "calendar",
+          mode: result.mode,
+          data: result.data,
+        });
+      }
+
+      return send(res, {
+        ok: false,
+        action: "calendar",
+        mode: result.mode,
+        error: result.error,
+        fallback_text: result.fallback_text,
+        raw_text: result.raw_text,
+        debug: result.debug,
+      });
+    }
+
+    return send(res, { ok: false, error: "Ação inválida." }, 400);
+  } catch (error) {
+    console.error("API /chat error:", error);
+
+    return send(
+      res,
+      {
+        ok: false,
+        error: error?.message || "Erro interno do servidor.",
+      },
+      500
     );
-
-    const body = await readJsonBody(req);
-    const prompt = String(body?.prompt || '').trim();
-    const system = body?.system ? String(body.system) : '';
-    const accessToken = getBearerToken(req);
-
-    if (!prompt) {
-      return json(res, 400, {
-        ok: false,
-        error: 'invalid_request',
-        details: 'Field "prompt" is required.',
-        requestId,
-      }, corsHeaders);
-    }
-
-    const { user, error: authError } = await ensureAuthenticatedUser(adminClient, accessToken);
-
-    if (authError || !user) {
-      return json(res, 401, {
-        ok: false,
-        error: 'unauthorized',
-        details: authError || 'Invalid auth token.',
-        requestId,
-      }, corsHeaders);
-    }
-
-    const cooldown = await enforceCooldown(adminClient, user.id);
-    if (!cooldown.allowed) {
-      return json(res, 429, {
-        ok: false,
-        error: 'cooldown_active',
-        details: 'Please wait a few seconds before sending another request.',
-        retryAfterMs: cooldown.retryAfterMs,
-        requestId,
-      }, corsHeaders);
-    }
-
-    const usage = await enforceDailyLimit(adminClient, user.id);
-    if (!usage.allowed) {
-      return json(res, 429, {
-        ok: false,
-        error: 'daily_limit_reached',
-        details: `Daily limit of ${DAILY_LIMIT} requests reached.`,
-        limit: usage.limit,
-        used: usage.used,
-        remaining: usage.remaining,
-        requestId,
-      }, corsHeaders);
-    }
-
-    const ai = await generateWithFallback({
-      env: runtime.env,
-      groqLikeKey: runtime.groqLikeKey,
-      prompt,
-      system,
-      requestId,
-    });
-
-    const durationMs = Date.now() - startedAt;
-
-    console.log('[api/chat] success', {
-      requestId,
-      userId: user.id,
-      provider: ai.provider,
-      durationMs,
-      remaining: usage.remaining,
-      vercelEnv: runtime.env.VERCEL_ENV,
-    });
-
-    return json(res, 200, {
-      ok: true,
-      text: ai.text,
-      provider: ai.provider,
-      limit: usage.limit,
-      used: usage.used,
-      remaining: usage.remaining,
-      requestId,
-    }, corsHeaders);
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-
-    console.error('[api/chat] unhandled error', {
-      requestId,
-      durationMs,
-      message: err?.message,
-      stack: err?.stack,
-      vercelEnv: runtime.env.VERCEL_ENV,
-    });
-
-    return json(res, 500, {
-      ok: false,
-      error: 'internal_error',
-      details: err?.message || 'Unexpected server error',
-      requestId,
-    }, corsHeaders);
   }
 }
