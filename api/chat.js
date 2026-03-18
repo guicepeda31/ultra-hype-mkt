@@ -1,246 +1,158 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const geminiApiKey = process.env.GEMINI_API_KEY;
-const grokApiKey = process.env.GROQ_API_KEY || process.env.GROK_API_KEY;
-
-if (!supabaseUrl) throw new Error('SUPABASE_URL não configurada');
-if (!supabaseAnonKey) throw new Error('SUPABASE_ANON_KEY não configurada');
-if (!supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada');
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+const { createClient } = require('@supabase/supabase-js');
 
 const DAILY_LIMIT = 30;
-const MIN_INTERVAL_MS = 4000;
 
-function getTodayKey() {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(now.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+function sendJson(res, status, body) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(body));
 }
 
-async function readJson(req) {
-  if (typeof req.body === 'object' && req.body) return req.body;
-
-  return await new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', chunk => {
-      data += chunk;
-    });
-    req.on('end', () => {
-      try {
-        resolve(data ? JSON.parse(data) : {});
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-async function getUserFromBearer(req) {
+function getBearerToken(req) {
   const auth = req.headers.authorization || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token) return null;
-
-  const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    }
-  });
-
-  const { data, error } = await userClient.auth.getUser();
-  if (error || !data?.user) return null;
-  return data.user;
+  if (!auth.startsWith('Bearer ')) return null;
+  return auth.slice('Bearer '.length).trim();
 }
 
-async function getUsage(userId, dayKey) {
-  const { data, error } = await supabaseAdmin
-    .from('user_usage')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('day_key', dayKey)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data;
-}
-
-async function upsertUsage(userId, dayKey, count) {
-  const { error } = await supabaseAdmin
-    .from('user_usage')
-    .upsert(
-      {
-        user_id: userId,
-        day_key: dayKey,
-        request_count: count,
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: 'user_id,day_key' }
-    );
-
-  if (error) throw error;
-}
-
-async function getRateLimit(userId) {
-  const { data, error } = await supabaseAdmin
-    .from('user_rate_limits')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data;
-}
-
-async function touchRateLimit(userId) {
-  const now = new Date().toISOString();
-
-  const { error } = await supabaseAdmin
-    .from('user_rate_limits')
-    .upsert(
-      {
-        user_id: userId,
-        last_request_at: now,
-        updated_at: now
-      },
-      { onConflict: 'user_id' }
-    );
-
-  if (error) throw error;
-}
-
-async function callGemini(prompt) {
-  if (!geminiApiKey) throw new Error('GEMINI_API_KEY ausente');
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }]
-          }
-        ]
-      })
-    }
-  );
-
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Gemini error ${res.status}: ${txt}`);
+function extractOutputText(data) {
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
+    return data.output_text.trim();
   }
 
-  const data = await res.json();
-  return (
-    data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('\n') ||
-    'Sem resposta.'
-  );
+  const parts = [];
+  for (const item of data?.output || []) {
+    if (item?.type === 'message') {
+      for (const content of item?.content || []) {
+        if (content?.type === 'output_text' && content?.text) {
+          parts.push(content.text);
+        }
+      }
+    }
+  }
+  return parts.join('\n').trim();
 }
 
-async function callGrok(prompt) {
-  if (!grokApiKey) throw new Error('GROK/GROQ API key ausente');
+module.exports = async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return sendJson(res, 405, { error: 'Method not allowed' });
+  }
 
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.OPENAI_MODEL || 'gpt-5-mini';
+
+  if (!supabaseUrl || !supabaseServiceRoleKey || !openaiApiKey) {
+    return sendJson(res, 500, { error: 'Missing server environment variables' });
+  }
+
+  const token = getBearerToken(req);
+  if (!token) {
+    return sendJson(res, 401, { error: 'Authentication required', code: 'auth_required' });
+  }
+
+  const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+
+  const { data: authData, error: authError } = await admin.auth.getUser(token);
+  if (authError || !authData || !authData.user) {
+    return sendJson(res, 401, { error: 'Invalid session', code: 'invalid_session' });
+  }
+
+  const user = authData.user;
+  const today = new Date().toISOString().slice(0, 10);
+
+  let requestsToday = 0;
+  const { data: usageRow, error: usageError } = await admin
+    .from('user_usage')
+    .select('id, day_key, requests_today')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (usageError && usageError.code !== 'PGRST116') {
+    return sendJson(res, 500, { error: 'Could not read usage' });
+  }
+
+  if (usageRow) {
+    requestsToday = usageRow.day_key === today ? Number(usageRow.requests_today || 0) : 0;
+  }
+
+  if (requestsToday >= DAILY_LIMIT) {
+    return sendJson(res, 429, {
+      error: 'Daily limit reached',
+      code: 'daily_limit_exceeded',
+      limit: DAILY_LIMIT,
+      requests_today: requestsToday
+    });
+  }
+
+  const body = typeof req.body === 'object' && req.body ? req.body : {};
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+  const maxTokensRaw = Number(body.maxTokens || 2000);
+  const maxOutputTokens = Number.isFinite(maxTokensRaw)
+    ? Math.max(256, Math.min(4000, Math.floor(maxTokensRaw)))
+    : 2000;
+
+  if (!prompt) {
+    return sendJson(res, 400, { error: 'Prompt is required' });
+  }
+
+  const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${grokApiKey}`
+      'Authorization': `Bearer ${openaiApiKey}`,
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'grok-2-latest',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7
+      model,
+      max_output_tokens: maxOutputTokens,
+      input: [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: prompt }
+          ]
+        }
+      ]
     })
   });
 
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Grok error ${res.status}: ${txt}`);
-  }
-
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content || 'Sem resposta.';
-}
-
-async function generateText(prompt) {
-  try {
-    return await callGrok(prompt);
-  } catch (e) {
-    console.error('Grok falhou, fallback Gemini:', e.message);
-    return await callGemini(prompt);
-  }
-}
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
-    const user = await getUserFromBearer(req);
-
-    if (!user) {
-      return res.status(401).json({ error: 'Não autenticado' });
-    }
-
-    const body = await readJson(req);
-    const prompt = body?.prompt?.trim();
-
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt obrigatório' });
-    }
-
-    const rate = await getRateLimit(user.id);
-
-    if (rate?.last_request_at) {
-      const elapsed = Date.now() - new Date(rate.last_request_at).getTime();
-
-      if (elapsed < MIN_INTERVAL_MS) {
-        const retryAfterMs = MIN_INTERVAL_MS - elapsed;
-        return res.status(429).json({
-          error: 'Aguarde alguns segundos antes de enviar outra solicitação.',
-          retry_after_ms: retryAfterMs
-        });
-      }
-    }
-
-    const dayKey = getTodayKey();
-    const usage = await getUsage(user.id, dayKey);
-    const currentCount = usage?.request_count || 0;
-
-    if (currentCount >= DAILY_LIMIT) {
-      return res.status(429).json({
-        error: 'Limite diário atingido.',
-        remaining: 0,
-        limit: DAILY_LIMIT
-      });
-    }
-
-    await touchRateLimit(user.id);
-
-    const text = await generateText(prompt);
-
-    await upsertUsage(user.id, dayKey, currentCount + 1);
-
-    return res.status(200).json({
-      text,
-      remaining: DAILY_LIMIT - (currentCount + 1),
-      limit: DAILY_LIMIT
-    });
-  } catch (error) {
-    console.error('API /chat error:', error);
-    return res.status(500).json({
-      error: 'Erro interno',
-      details: error.message
+  if (!openaiResponse.ok) {
+    const errorText = await openaiResponse.text();
+    return sendJson(res, openaiResponse.status, {
+      error: 'OpenAI request failed',
+      details: errorText.slice(0, 800)
     });
   }
-}
+
+  const data = await openaiResponse.json();
+  const text = extractOutputText(data);
+
+  if (!text) {
+    return sendJson(res, 502, { error: 'Empty model response' });
+  }
+
+  requestsToday += 1;
+
+  const { error: updateError } = await admin
+    .from('user_usage')
+    .upsert({
+      id: user.id,
+      email: user.email || null,
+      day_key: today,
+      requests_today: requestsToday,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+
+  if (updateError) {
+    return sendJson(res, 500, { error: 'Could not update usage' });
+  }
+
+  return sendJson(res, 200, {
+    text,
+    requests_today: requestsToday,
+    limit: DAILY_LIMIT
+  });
+};
