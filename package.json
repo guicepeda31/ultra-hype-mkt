@@ -1,5 +1,8 @@
 {
-  "name": "ultra-hype-mkt",
+  "name": "ultra-hype-saas-mvp",
   "version": "1.0.0",
-  "type": "module"
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4"
+  }
 }
