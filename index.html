@@ -4,7 +4,182 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Ultra Hype — Intelligence Criativo</title>
-<script>window._supaReady=false;(function(){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";s.onload=function(){window._supaReady=true;if(window._onSupaReady)window._onSupaReady();};s.onerror=function(){console.log("Supabase SDK nao carregou - modo offline");};document.head.appendChild(s);})();</script>
+<script>window._supaReady=false;(function(){var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";s.onload=function(){window._supaReady=true;if(window._onSupaReady)window._onSupaReady();};s.onerror=function(){console.log("Supabase SDK nao carregou - modo offline");};document.head.appendChild(s);})();
+
+// ── HARDENING V3: DOM seguro para histórico / referências / calendário ─────────────────
+function clearNode(el){ while(el && el.firstChild) el.removeChild(el.firstChild); }
+function mk(tag, attrs={}, text){
+  const el=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs||{})){
+    if(v===undefined||v===null) continue;
+    if(k==='class') el.className=v;
+    else if(k==='style') el.style.cssText=v;
+    else if(k==='dataset') Object.entries(v).forEach(([dk,dv])=>{ if(dv!==undefined&&dv!==null) el.dataset[dk]=String(dv); });
+    else if(k==='type') el.type=v;
+    else el.setAttribute(k,v);
+  }
+  if(text!==undefined&&text!==null) el.textContent=String(text);
+  return el;
+}
+
+renderRefs = function(){
+  const el=document.getElementById('refs-grid');
+  if(!el) return;
+  clearNode(el);
+  refs.map(sanitizeRef).filter(Boolean).forEach((r,i)=>{
+    const card=mk('div',{class:'rb'});
+    card.append(
+      mk('div',{class:'rb-type'}, r.tipo),
+      mk('div',{class:'rb-title'}, r.titulo),
+      mk('div',{class:'rb-desc'}, r.notas||'')
+    );
+    const foot=mk('div',{class:'rb-foot'});
+    foot.appendChild(mk('span',{class:'gtag gtag-d'}, r.tag||''));
+    const actions=mk('div',{style:'display:flex;gap:4px'});
+    const href=safeUrl(r.url);
+    if(href){
+      const a=mk('a',{href, target:'_blank', rel:'noopener noreferrer nofollow', class:'rb-del', style:'opacity:1;color:var(--blue)'});
+      a.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+      actions.appendChild(a);
+    }
+    const delBtn=mk('button',{class:'rb-del', type:'button', dataset:{action:'delete-ref', index:i}});
+    delBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+    actions.appendChild(delBtn);
+    foot.appendChild(actions);
+    card.appendChild(foot);
+    el.appendChild(card);
+  });
+  const addBtn=mk('button',{class:'rb-add', type:'button', dataset:{action:'open-ref-modal'}});
+  addBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>'+(lang==='en'?'Add reference':'Adicionar referência')+'</span>';
+  el.appendChild(addBtn);
+  updRefsCnt();
+};
+
+openCalDay = function(ds){
+  const dateEl=document.getElementById('cal-day-date');
+  const inputEl=document.getElementById('cal-day-input');
+  const dsEl=document.getElementById('cal-day-ds');
+  const evsWrap=document.getElementById('cal-day-evs');
+  if(dateEl) dateEl.textContent=new Date(ds+'T12:00:00').toLocaleDateString(lang==='en'?'en-US':'pt-BR',{weekday:'long',day:'numeric',month:'long'});
+  if(inputEl) inputEl.value='';
+  if(dsEl) dsEl.value=ds;
+  if(evsWrap){
+    clearNode(evsWrap);
+    const evs=calManual.filter(e=>e.data===ds).map(sanitizeManualEvent).filter(Boolean);
+    if(evs.length){
+      evs.forEach((e)=>{
+        const idx=calManual.findIndex(x=>x===e || (x.data===e.data && x.texto===e.texto && x.color===e.color));
+        const row=mk('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--b);font-size:13px'});
+        row.appendChild(mk('span',{style:`width:10px;height:10px;border-radius:50%;background:${e.color};flex-shrink:0;display:inline-block`}));
+        row.appendChild(mk('span',{style:'flex:1'}, e.texto));
+        const btn=mk('button',{type:'button',dataset:{action:'delete-manual-modal', ds, index:idx},style:'border:none;background:none;cursor:pointer;color:var(--t3);font-size:16px;line-height:1'}, '✕');
+        row.appendChild(btn);
+        evsWrap.appendChild(row);
+      });
+    }else{
+      evsWrap.appendChild(mk('div',{style:'font-size:12px;color:var(--t3);padding:8px 0'}, lang==='pt'?'Nenhum evento. Adicione abaixo.':'No events. Add below.'));
+    }
+  }
+  document.getElementById('cal-day-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('cal-day-input')?.focus(),100);
+  mLabels.forEach((el,i)=>{ if(mLabelKeys[i]) el.textContent=t(mLabelKeys[i]); });
+  const mBtns=document.querySelectorAll('.modal-btns .mbtn');
+  if(mBtns[0]) mBtns[0].textContent=t('modal.cancel');
+  if(mBtns[1]) mBtns[1].textContent=t('modal.save');
+  renderHist();
+};
+
+renderHist = function(){
+  const el=document.getElementById('nav-hist');
+  if(!el) return;
+  clearNode(el);
+  if(!hist.length){
+    el.appendChild(mk('div',{style:'font-size:12px;color:var(--t3);padding:4px 12px'}, t('hist.empty')));
+    return;
+  }
+  const c=['#1a73e8','#1e8e3e','#d93025','#f29900','#8430ce','#129eaf'];
+  hist.slice(0,6).forEach((h,i)=>{
+    const item=mk('div',{class:'nav-item',style:'cursor:pointer',dataset:{action:'hist-search', tema: String(h.tema||'')}});
+    item.appendChild(mk('div',{class:'nav-dot',style:`background:${c[i%c.length]}`}));
+    item.appendChild(mk('span',{style:'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px'}, h.tema||''));
+    el.appendChild(item);
+  });
+};
+
+renderCal = function() {
+  const locale = lang==='en' ? 'en-US' : 'pt-BR';
+  const dias = t('cal.days').split(',');
+  const out=document.getElementById('out-cal');
+  const lbl=document.getElementById('cal-lbl');
+  if(!out || !lbl) return;
+  lbl.textContent=new Date(calY,calM,1).toLocaleDateString(locale,{month:'long',year:'numeric'});
+  const primeiro=new Date(calY,calM,1).getDay();
+  const total=new Date(calY,calM+1,0).getDate();
+  const hoje=new Date().toISOString().slice(0,10);
+  clearNode(out);
+  const grid=mk('div',{class:'cal-grid'});
+  dias.forEach(d=>grid.appendChild(mk('div',{class:'cal-dh'}, d)));
+  for(let i=0;i<primeiro;i++) grid.appendChild(mk('div',{class:'cal-day cal-empty'}));
+  for(let d=1;d<=total;d++){
+    const ds=`${calY}-${String(calM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const evsDia=calEv.filter(e=>e.data===ds).map(sanitizeCalendarEvent).filter(Boolean);
+    const manEvs=calManual.filter(e=>e.data===ds).map(sanitizeManualEvent).filter(Boolean);
+    const day=mk('div',{class:`cal-day${ds===hoje?' today':''}${(evsDia.length||manEvs.length)?' has-events':''}`,dataset:{action:'open-cal-day', ds}});
+    day.appendChild(mk('div',{class:'cal-dn'}, d));
+    evsDia.forEach(e=>{
+      const ev=mk('div',{class:`cal-ev ${String(e.tipo||'').replace(/[^a-z-]/gi,'')}`}, e.texto||'');
+      ev.title=e.texto||'';
+      day.appendChild(ev);
+    });
+    manEvs.forEach((e,idx)=>{
+      const ev=mk('div',{class:'cal-ev cal-ev-manual',style:`background:${e.color}20;color:${e.color};position:relative`,title:e.texto||'',dataset:{action:'manual-ev'}});
+      ev.textContent=e.texto||'';
+      const del=mk('span',{class:'cal-ev-del',dataset:{action:'delete-manual', ds, index:idx}}, '✕');
+      ev.appendChild(del);
+      day.appendChild(ev);
+    });
+    day.appendChild(mk('div',{class:'cal-add-hint'}, '+ add'));
+    grid.appendChild(day);
+  }
+  out.appendChild(grid);
+  const totalEv = calEv.length + calManual.length;
+  const calBadge = document.getElementById('cal-ev-cnt');
+  if(calBadge){ if(totalEv>0){calBadge.style.display='inline';calBadge.textContent=String(totalEv);}else calBadge.style.display='none'; }
+};
+
+document.addEventListener('click', function(e){
+  const refDel=e.target.closest('[data-action="delete-ref"]');
+  if(refDel){ delRef(Number(refDel.dataset.index)); return; }
+  const refOpen=e.target.closest('[data-action="open-ref-modal"]');
+  if(refOpen){ document.getElementById('modal-ref').style.display='block'; return; }
+  const histItem=e.target.closest('[data-action="hist-search"]');
+  if(histItem){
+    const tema=histItem.dataset.tema||'';
+    const inp=document.getElementById('inp-trends');
+    if(inp) inp.value=tema;
+    go('trends',document.getElementById('ni-trends'),t('nav.trends'));
+    buscarTrends();
+    return;
+  }
+  const openDay=e.target.closest('[data-action="open-cal-day"]');
+  if(openDay && !e.target.closest('[data-action="delete-manual"]') && !e.target.closest('[data-action="manual-ev"]')){
+    openCalDay(openDay.dataset.ds);
+    return;
+  }
+  const delManual=e.target.closest('[data-action="delete-manual"]');
+  if(delManual){
+    e.stopPropagation();
+    delManualEv(delManual.dataset.ds, Number(delManual.dataset.index));
+    return;
+  }
+  const delManualModal=e.target.closest('[data-action="delete-manual-modal"]');
+  if(delManualModal){
+    delManualEvModal(delManualModal.dataset.ds, Number(delManualModal.dataset.index));
+    return;
+  }
+});
+
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -593,11 +768,19 @@ function safeUrl(u){
   }catch(_){ return ''; }
 }
 
-let refs=sGet('uh-refs',[]);
+function userScope(){return (currentUser?.email||'guest').toLowerCase()}
+function scopedKey(base){return `${base}:${userScope()}`}
+function loadRefsState(){refs=pGet(scopedKey('uh-refs'), pGet('uh-refs', []));if(!Array.isArray(refs))refs=[]}
+function saveRefsState(){pSet(scopedKey('uh-refs'), refs);pSet('uh-refs', refs)}
+function loadCalendarState(){calEv=pGet(scopedKey('uh-cal-auto'), pGet('uh-cal-auto', []));if(!Array.isArray(calEv))calEv=[];calManual=pGet(scopedKey('uh-cal-manual'), pGet('uh-cal-manual', []));if(!Array.isArray(calManual))calManual=[]}
+function saveCalAuto(){pSet(scopedKey('uh-cal-auto'), calEv);pSet('uh-cal-auto', calEv)}
+function saveManual(){pSet(scopedKey('uh-cal-manual'), calManual);pSet('uh-cal-manual', calManual)}
+let refs=[];
 let hist=sGet('uh-hist',[]);
 let calEv=[],calY=new Date().getFullYear(),calM=new Date().getMonth();
-let calManual=pGet('uh-cal-manual',[]);
-function saveManual(){pSet('uh-cal-manual',calManual);}
+let calManual=[];
+loadRefsState();
+loadCalendarState();
 function openCalDay(ds){
   // populate modal
   document.getElementById('cal-day-date').textContent = new Date(ds+'T12:00:00').toLocaleDateString(lang==='en'?'en-US':'pt-BR',{weekday:'long',day:'numeric',month:'long'});
@@ -691,9 +874,9 @@ async function ai(prompt,maxTokens=2000,retries=1){
         if(!res.ok){
           const e=await res.json().catch(()=>({}));
           if(e?.usage) syncUsage(e.usage);
-          if(e?.code==='daily_limit_reached'){
-            showUsageModal();
-            throw new Error(e?.error || 'Limite diário atingido.');
+          if(e?.code==='usage_limit_reached'){
+            showUsageModal(e?.usage);
+            throw new Error(e?.error || 'Limite de uso atingido.');
           }
           const retryAfter=Math.max(1,Number(res.headers.get('Retry-After')||0))||0;
           const retryable=[503,504].includes(res.status);
@@ -724,28 +907,30 @@ async function ai(prompt,maxTokens=2000,retries=1){
 }
 // ── AUTH & USAGE SYSTEM ──────────────────────────────────────
 const USAGE_LIMIT=10;
+const USAGE_WINDOW_HOURS=5;
 let currentUser=sGet('uh-user',null);
-function getUsageData(){const now=new Date(),day=`${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`,raw=pGet('uh-usage',{});if(raw.day!==day)return{day:day,count:0};return raw;}
+function getUsageWindowKey(){return Math.floor(Date.now()/(USAGE_WINDOW_HOURS*60*60*1000));}
+function getUsageData(){const raw=pGet('uh-usage',{}),windowKey=getUsageWindowKey();if(raw.windowKey!==windowKey)return{windowKey,count:0,remaining:USAGE_LIMIT,limit:USAGE_LIMIT,period:'5h'};return raw;}
 async function checkUsage(){
   var d=getUsageData();
-  if(d.count>=USAGE_LIMIT){showUsageModal();return false;}
+  if((typeof d.remaining==='number' ? d.remaining : (USAGE_LIMIT-(d.count||0)))<=0){showUsageModal(d);return false;}
   return true;
 }
 function syncUsage(data){
   if(!data||typeof data.used!=='number') return;
-  const now=new Date(),day=`${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
-  pSet('uh-usage',{day:day,count:Math.max(0,Number(data.used)||0),limit:Number(data.limit)||USAGE_LIMIT,remaining:Math.max(0,Number(data.remaining)||0)});
+  pSet('uh-usage',{windowKey:getUsageWindowKey(),count:Math.max(0,Number(data.used)||0),limit:Number(data.limit)||USAGE_LIMIT,remaining:Math.max(0,Number(data.remaining)||0),period:data.period||'5h',windowHours:Number(data.windowHours)||USAGE_WINDOW_HOURS,resetAt:data.resetAt||null});
   updUsageBadge();
 }
 function incrementUsage(){
   var d=getUsageData();
-  d.count=(d.count||0)+1;
+  d.count=(d.count||0)+1; d.remaining=Math.max(0,USAGE_LIMIT-d.count);
   pSet('uh-usage',d);
   updUsageBadge();
 }
 function getUsageLeft(){const d=getUsageData();if(typeof d.remaining==='number') return Math.max(0,d.remaining);return Math.max(0,USAGE_LIMIT-(d.count||0));}
-function updUsageBadge(){const left=getUsageLeft(),badge=document.getElementById('usage-badge');if(badge){badge.textContent=`${left} uso${left!==1?'s':''} restante${left!==1?'s':''} hoje`;badge.style.color=left<=1?'var(--red)':left<=2?'var(--amber)':'var(--t3)';}}
-function showUsageModal(){document.getElementById('usage-modal-msg').innerHTML=lang==='pt'?`Você atingiu seu limite de <strong>10 usos por dia</strong>.<br><br>Tente novamente amanhã.`:`You've reached your <strong>10 uses per day</strong> limit.<br><br>Please try again tomorrow.`;document.getElementById('usage-modal').style.display='block';}
+function fmtResetAt(ts){if(!ts) return ''; try{return new Date(ts).toLocaleTimeString(lang==='en'?'en-US':'pt-BR',{hour:'2-digit',minute:'2-digit'});}catch(_){return '';}}
+function updUsageBadge(){const left=getUsageLeft(),badge=document.getElementById('usage-badge');if(badge){badge.textContent=lang==='pt'?`${left} uso${left!==1?'s':''} restante${left!==1?'s':''} nas próximas 5h`:`${left} use${left!==1?'s':''} remaining in the next 5h`;badge.style.color=left<=1?'var(--red)':left<=2?'var(--amber)':'var(--t3)';}}
+function showUsageModal(data){const resetTxt=fmtResetAt(data?.resetAt);document.getElementById('usage-modal-msg').innerHTML=lang==='pt'?`Você atingiu seu limite de <strong>10 usos a cada 5 horas</strong>.<br><br>${resetTxt?`Tente novamente após <strong>${resetTxt}</strong>.`:'Tente novamente em breve.'}`:`You've reached your <strong>10 uses every 5 hours</strong> limit.<br><br>${resetTxt?`Please try again after <strong>${resetTxt}</strong>.`:'Please try again soon.'}`;document.getElementById('usage-modal').style.display='block';}
 // ── LOGIN ────────────────────────────────────────────────────
 function showLoginModal(mode='login'){document.getElementById('login-modal').style.display='block';switchAuthMode(mode);}
 function closeLoginModal(){document.getElementById('login-modal').style.display='none';}
@@ -794,13 +979,17 @@ function loginUser(user){
   currentUser=user;
   sSet('uh-user',user);
   const ud=sGet(`uh-data-${user.email}`,{});
-  if(ud.refs)refs=ud.refs;if(ud.hist)hist=ud.hist;
-  renderHist();renderRefs();updAuthUI();
+  if(ud.hist)hist=ud.hist;
+  loadRefsState();
+  loadCalendarState();
+  renderHist();renderRefs();renderCal();updAuthUI();
 }
 async function logout(){
   var s=initSupa();if(s)await s.auth.signOut();
-  if(currentUser)sSet('uh-data-'+currentUser.email,{refs:refs,hist:hist});
+  if(currentUser)sSet('uh-data-'+currentUser.email,{hist:hist});
   currentUser=null;
+  loadRefsState();
+  loadCalendarState();
   // Limpa dados sensíveis de sessão do localStorage
   sRemove('uh-user');
   sRemove('uh-usage');
@@ -830,30 +1019,84 @@ function updBar(){const n=selMap.size;document.getElementById('sel-n').textConte
 function limparSel(){selMap.clear();document.querySelectorAll('.tcard.sel').forEach(c=>c.classList.remove('sel'));updBar()}
 function togCard(id,titulo,ctx,cat,q,fonte,score){const el=document.getElementById(id);if(selMap.has(id)){selMap.delete(id);el.classList.remove('sel')}else{selMap.set(id,{titulo,ctx,cat,q,fonte,score});el.classList.add('sel')}updBar()}
 async function buscarTrends(){let tema=document.getElementById('inp-trends').value.trim();if(!tema)return;
-  // Sanitiza input do usuário antes de enviar
   tema=tema.replace(/[<>&"'`]/g,'').replace(/\s+/g,' ').slice(0,200);
-  if(!tema)return;const btn=document.getElementById('btn-trends');btn.disabled=true;btn.textContent='Analisando...';const fontes=[...document.querySelectorAll('.chip.on')].map(s=>s.textContent.trim()).join(', ');sp('out-trends',`Consultando ${fontes}…`);const p=`Você é um analista de cultura digital e tendências para o mercado brasileiro.\nAnalise trends para o tema "${tema}" com base nas fontes: ${fontes}.\nRetorne APENAS JSON válido sem markdown:\n{"resumo":"2 frases factuais sobre o momento cultural deste tema no Brasil","now":[{"titulo":"","contexto":"","plataformas":"","tom":"positivo|neutro|negativo","fonte":"Wikipedia Trending|HackerNews|Google News|DuckDuckGo News|Reddit","query_busca":"","score":82,"credibilidade":"alta|media"}],"emerging":[{"titulo":"","contexto":"","plataformas":"","tom":"","fonte":"","query_busca":"","score":65,"credibilidade":""}],"evergreen":[{"titulo":"","contexto":"","plataformas":"","tom":"","fonte":"","query_busca":"","score":52,"credibilidade":""}]}\n3 itens por lista. score=oportunidade 0-100. Factual, Brasil.`;try{const raw=await ai(p);const d=parseJSON(raw);S.trends=d;S.tema_t=tema;renderTrends(d,tema);saveHist(tema);updCtx()}catch(e){errC('out-trends','Falha na análise.')}btn.disabled=false;btn.textContent='Analisar'}
+  if(!tema)return;const btn=document.getElementById('btn-trends');btn.disabled=true;btn.textContent='Analisando...';const fontes=[...document.querySelectorAll('.chip.on')].map(s=>s.textContent.trim()).join(', ');sp('out-trends',`Consultando ${fontes}…`);const p=`Você é um analista de cultura digital e tendências para o mercado brasileiro. Analise trends para o tema "${tema}" com base nas fontes: ${fontes}. Todos os campos são obrigatórios. NENHUMA string vazia, nenhum item em branco e nenhum placeholder. Cada item precisa ter título específico, contexto objetivo, plataformas, tom, fonte, query_busca útil, score 0-100 e credibilidade. Retorne APENAS JSON válido sem markdown.
+{"resumo":"2 frases factuais sobre o momento cultural deste tema no Brasil","now":[{"titulo":"texto obrigatório","contexto":"texto obrigatório","plataformas":"texto obrigatório","tom":"positivo|neutro|negativo","fonte":"Wikipedia Trending|HackerNews|Google News|DuckDuckGo News|Reddit","query_busca":"texto obrigatório","score":82,"credibilidade":"alta|media"}],"emerging":[{"titulo":"texto obrigatório","contexto":"texto obrigatório","plataformas":"texto obrigatório","tom":"positivo|neutro|negativo","fonte":"Wikipedia Trending|HackerNews|Google News|DuckDuckGo News|Reddit","query_busca":"texto obrigatório","score":65,"credibilidade":"alta|media"}],"evergreen":[{"titulo":"texto obrigatório","contexto":"texto obrigatório","plataformas":"texto obrigatório","tom":"positivo|neutro|negativo","fonte":"Wikipedia Trending|HackerNews|Google News|DuckDuckGo News|Reddit","query_busca":"texto obrigatório","score":52,"credibilidade":"alta|media"}]}
+Exatamente 3 itens por lista. score=oportunidade 0-100. Factual, Brasil.`;try{const raw=await ai(p);const d=normalizeTrends(parseJSON(raw),tema);S.trends=d;S.tema_t=tema;renderTrends(d,tema);saveHist(tema);updCtx()}catch(e){errC('out-trends','Falha na análise.')}btn.disabled=false;btn.textContent='Analisar'}
+
+function fillText(v,fallback){const s=String(v||'').trim();return s||fallback}
+function normalizeTrends(d,tema){
+  const src=d&&typeof d==='object'?d:{};
+  const mk=(arr,label,baseScore)=>Array.from({length:3},(_,i)=>{
+    const it=(Array.isArray(arr)?arr[i]:null)||{};
+    return {
+      titulo:fillText(it.titulo,`${tema} — ângulo ${i+1} ${label}`),
+      contexto:fillText(it.contexto,`Discussão relevante sobre ${tema} no Brasil com oportunidade de conteúdo.`),
+      plataformas:fillText(it.plataformas,'Instagram, TikTok e imprensa'),
+      tom:['positivo','neutro','negativo'].includes(it.tom)?it.tom:'neutro',
+      fonte:fillText(it.fonte,'Google News'),
+      query_busca:fillText(it.query_busca,`${tema} Brasil ${label}`),
+      score:Number.isFinite(Number(it.score))?Math.max(0,Math.min(100,Math.round(Number(it.score)))):baseScore,
+      credibilidade:['alta','media'].includes(it.credibilidade)?it.credibilidade:'media'
+    };
+  });
+  return {resumo:fillText(src.resumo,`O tema ${tema} está gerando conversa cultural no Brasil com oportunidade de marca e conteúdo.`),now:mk(src.now,'agora',82),emerging:mk(src.emerging,'emergindo',68),evergreen:mk(src.evergreen,'evergreen',55)};
+}
+function normalizeIdeas(d,tema){
+  const arr=Array.isArray(d?.ideias)?d.ideias:[];
+  const levels=['safe','bold','disruptivo'];
+  return {ideias:Array.from({length:3},(_,i)=>{const it=arr[i]||{};return {titulo:fillText(it.titulo,`${tema} — conceito ${i+1}`),tagline:fillText(it.tagline,`Uma leitura criativa de ${tema} para ganhar atenção.`),descricao:fillText(it.descricao,`Conceito criativo pensado para o mercado brasileiro com execução clara e desdobramentos.`),nivel:levels.includes(it.nivel)?it.nivel:levels[i]||'bold',plataforma:fillText(it.plataforma,'Instagram + TikTok'),janela:fillText(it.janela,'Próximas 2 semanas'),copys:Array.from({length:3},(__,j)=>fillText(it.copys?.[j],`${tema}: gancho criativo ${j+1}`)),referencias:Array.from({length:2},(__,j)=>fillText(it.referencias?.[j],`Referência criativa ${j+1}`))};})};
+}
+function normalizeBriefing(d,texto){
+  const src=d&&typeof d==='object'?d:{};const teaser=texto.slice(0,80);
+  return {produto:fillText(src.produto,'Produto ou campanha analisada'),publico:fillText(src.publico,'Público principal descrito no briefing'),tom:fillText(src.tom,'Claro, relevante e alinhado à marca'),objetivos:Array.from({length:Math.max(3,Array.isArray(src.objetivos)?src.objetivos.length:0)||3},(_,i)=>fillText(src.objetivos?.[i],['Gerar awareness qualificado','Aumentar consideração','Converter interesse em ação'][i]||`Objetivo ${i+1}`)).slice(0,4),restricoes:Array.from({length:Math.max(2,Array.isArray(src.restricoes)?src.restricoes.length:0)||2},(_,i)=>fillText(src.restricoes?.[i],['Respeitar tom da marca','Manter execução viável'][i]||`Restrição ${i+1}`)).slice(0,3),trends_relevantes:Array.from({length:3},(_,i)=>{const it=src.trends_relevantes?.[i]||{};return {trend:fillText(it.trend,`Trend ${i+1} ligada ao briefing`),fit_score:Number.isFinite(Number(it.fit_score))?Math.max(1,Math.min(100,Math.round(Number(it.fit_score)))):[85,72,60][i],justificativa:fillText(it.justificativa,`Conecta o briefing a uma conversa atual e aplicável ao mercado brasileiro.`)};}),urgencia:Number.isFinite(Number(src.urgencia))?Math.max(1,Math.min(10,Math.round(Number(src.urgencia)))):7,oportunidade:fillText(src.oportunidade,`Janela de oportunidade atual para ativar ${teaser||'a campanha'}.`)};
+}
+function normalizeMoodboard(d,tema){
+  const src=d&&typeof d==='object'?d:{};
+  const paletteDefaults=[['#2D4A3E','Verde profundo','Base institucional e contraste'],['#F5E6D0','Areia clara','Respiro e áreas de apoio'],['#C8453A','Vermelho energia','Destaques e CTA'],['#1A1A2E','Noite gráfica','Tipografia e fundos escuros'],['#E8C547','Dourado pop','Pontos de atenção e brilho']];
+  const texDefaults=['granulação suave','superfície acetinada','recortes editoriais'];
+  const wordDefaults=['editorial','contemporâneo','brasileiro','textura','contraste','ritmo'];
+  const avoidDefaults=['visual genérico','excesso de informação'];
+  return {conceito_visual:fillText(src.conceito_visual,`${tema} com linguagem contemporânea, editorial e alto contraste.`),paleta:Array.from({length:5},(_,i)=>{const it=src.paleta?.[i]||{};const dft=paletteDefaults[i];return {hex:/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(String(it.hex||''))?it.hex:dft[0],nome:fillText(it.nome,dft[1]),uso:fillText(it.uso,dft[2])};}),tipografias:Array.from({length:2},(_,i)=>{const it=src.tipografias?.[i]||{};return {nome:fillText(it.nome,i===0?'Google Sans':'Inter'),estilo:['display','corpo'].includes(it.estilo)?it.estilo:(i===0?'display':'corpo'),descricao:fillText(it.descricao,i===0?'Uso em headlines com presença visual.':'Uso em textos de apoio com leitura limpa.')};}),texturas:Array.from({length:3},(_,i)=>fillText(src.texturas?.[i],texDefaults[i])),referencias:Array.from({length:3},(_,i)=>{const it=src.referencias?.[i]||{};return {titulo:fillText(it.titulo,`${tema} — referência ${i+1}`),tipo:['campanha','filme','artista','movimento'].includes(it.tipo)?it.tipo:'campanha',descricao:fillText(it.descricao,'Referência útil para tom visual, composição e atmosfera.')};}),palavras_visuais:Array.from({length:6},(_,i)=>fillText(src.palavras_visuais?.[i],wordDefaults[i])),evitar:Array.from({length:2},(_,i)=>fillText(src.evitar?.[i],avoidDefaults[i]))};
+}
+function normalizeRoteiro(d,tema){
+  const src=d&&typeof d==='object'?d:{};const total=Math.max(3,Math.min(20,Number(src.total)||scVal||6));
+  return {tipo:fillText(src.tipo,'Roteiro estratégico'),tema:fillText(src.tema,tema),total,duracao_estimada:fillText(src.duracao_estimada,curType==='ppt'?`${total} slides`:`${Math.max(20,total*5)}s estimados`),slides:Array.from({length:total},(_,i)=>{const it=src.slides?.[i]||{};return {numero:i+1,titulo:fillText(it.titulo,`Cena ${i+1}`),conteudo:fillText(it.conteudo,`Desenvolvimento do roteiro para ${tema} com foco em clareza e progressão.`),narração:fillText(it['narração']||it.narracao,`Texto de locução da cena ${i+1} com objetivo narrativo.`),nota_visual:fillText(it.nota_visual,'Indicação visual objetiva para produção.')};})};
+}
+
 function renderTrends(d,tema){const tom=t=>t==='positivo'?`<span class="gtag gtag-ev">+ positivo</span>`:t==='negativo'?`<span class="gtag gtag-now">− negativo</span>`:`<span class="gtag gtag-d">neutro</span>`;const scC=s=>s>=75?'sc-hi':s>=50?'sc-md':'sc-lo';const credB=c=>c==='alta'?`<span class="gtag gtag-ev" style="font-size:9px">✓ verificável</span>`:`<span class="gtag gtag-d" style="font-size:9px">verificar fonte</span>`;const card=(it,cat,ct)=>{const id='tc'+(++tcId),q=it.query_busca||it.titulo,sc=it.score||55;return`<div class="tcard" id="${id}" onclick="togCard('${id}','${esc(it.titulo)}','${esc(it.contexto)}','${cat}','${esc(q)}','${esc(it.fonte||'')}',${sc})"><div class="tcard-cb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><div class="tcard-head"><div class="tcard-title">${it.titulo}</div><span class="tcard-score ${scC(sc)}">${sc}</span></div><div class="tcard-ctx">${it.contexto}</div><div class="tcard-foot"><span class="gtag ${ct}">${cat}</span><span class="gtag gtag-d">${it.plataformas}</span>${tom(it.tom)}${credB(it.credibilidade)}${it.fonte?slink(it.fonte,q):''}</div></div>`};const col=(items,cls,lbl,cat,ct)=>`<div class="${cls}"><div class="tcol-hd"><span class="col-dot"></span>${lbl}</div>${(items||[]).map(it=>card(it,cat,ct)).join('')}</div>`;document.getElementById('out-trends').innerHTML=`${d.resumo?`<div class="info-card ic-blue"><div class="ic-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></div><div class="ic-body">${d.resumo} — <strong>Clique nos cards</strong> para selecionar e gerar planejamento.</div></div>`:''}<div class="trend-cols">${col(d.now,'col-now','Agora','Trending Now','gtag-now')}${col(d.emerging,'col-em','Emergindo','Emergindo','gtag-em')}${col(d.evergreen,'col-ev','Evergreen','Evergreen','gtag-ev')}</div>`}
 document.getElementById('inp-trends').addEventListener('keydown',e=>{if(e.key==='Enter')buscarTrends()});
-async function irParaPlano(){if(!selMap.size)return;const pb2=document.getElementById('plano-cnt');if(pb2)pb2.style.display='inline';go('plano',document.getElementById('ni-plano'),'Planejamento Estratégico');const trends=[...selMap.values()];const cc=c=>c==='Trending Now'?'#d93025':c==='Emergindo'?'#f29900':'#1e8e3e';document.getElementById('plano-themes').innerHTML=`<div class="plan-themes">${trends.map(t=>`<span class="pt-tag"><span class="pt-dot" style="background:${cc(t.cat)}"></span>${t.titulo}<span style="font-size:10px;color:var(--t3);margin-left:5px;font-weight:400">${t.score}pts</span></span>`).join('')}</div>`;sp('out-plano','Gerando planejamento…');const p=`Estrategista de marketing sênior, mercado brasileiro.\nTrends: ${JSON.stringify(trends.map(t=>({titulo:t.titulo,contexto:t.ctx,categoria:t.cat,score:t.score})))}\nJSON sem markdown:\n{"posicionamento":{"big_idea":"","insight_central":"","territorio_criativo":"","publico_primario":"","publico_secundario":"","tom_de_voz":""},"fases":[{"fase":"Fase 1","periodo":"Semanas 1-2","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]},{"fase":"Fase 2","periodo":"Semanas 3-5","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]},{"fase":"Fase 3","periodo":"Semanas 6-8","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]}],"canais":[{"canal":"","prioridade":"alta|media|baixa","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""}],"kpis":[{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""}],"riscos":[{"risco":"","impacto":"alto|medio|baixo","mitigacao":""},{"risco":"","impacto":"","mitigacao":""},{"risco":"","impacto":"","mitigacao":""}],"proximos_passos":["","","","",""]}`;try{const raw=await ai(p,2500);const d=parseJSON(raw);S.plano=d;renderPlano(d,trends);updCtx();gerarEvCal(d)}catch(e){errC('out-plano','Falha.')}}
+function normalizePlan(d,trends){const tema=(trends||[]).map(t=>t.titulo).slice(0,3).join(' + ')||'tema selecionado';const base=d&&typeof d==='object'?d:{};const pos=base.posicionamento||{};const fases=Array.isArray(base.fases)?base.fases:[];const canais=Array.isArray(base.canais)?base.canais:[];const kpis=Array.isArray(base.kpis)?base.kpis:[];const riscos=Array.isArray(base.riscos)?base.riscos:[];const passos=Array.isArray(base.proximos_passos)?base.proximos_passos:[];return {posicionamento:{big_idea:(pos.big_idea||`Transformar ${tema} em conversa cultural relevante para a marca`).trim(),insight_central:(pos.insight_central||`As trends sobre ${tema} mostram atenção alta e oportunidade de narrativa com timing.`).trim(),territorio_criativo:(pos.territorio_criativo||'Cultura pop + utilidade + participação do público').trim(),publico_primario:(pos.publico_primario||'Jovens adultos conectados à cultura digital brasileira').trim(),publico_secundario:(pos.publico_secundario||'Audiência ampliada interessada no tema e em entretenimento').trim(),tom_de_voz:(pos.tom_de_voz||'Atual, claro e culturalmente atento').trim()},fases:(fases.length?fases:[{fase:'Fase 1',periodo:'Semanas 1-2',titulo:'Aquecer conversa',descricao:`Abrir território da campanha em torno de ${tema}.`,acoes:['Mapear conteúdos-chave','Publicar peças de entrada','Ativar social listening'],formatos:['posts','short video']},{fase:'Fase 2',periodo:'Semanas 3-5',titulo:'Engajar e expandir',descricao:'Transformar interesse em participação contínua.',acoes:['Criar série de conteúdos','Ativar creators','Testar mensagens'],formatos:['reels','stories']},{fase:'Fase 3',periodo:'Semanas 6-8',titulo:'Converter e consolidar',descricao:'Levar a narrativa para resultado e aprendizado.',acoes:['Otimizar mídia','Reforçar CTA','Medir performance'],formatos:['paid social','landing page']}]).map((f,i)=>({fase:f.fase||`Fase ${i+1}`,periodo:f.periodo||`Semanas ${i*2+1}-${i*2+2}`,titulo:(f.titulo||['Aquecer conversa','Engajar e expandir','Converter e consolidar'][i]||`Fase ${i+1}`).trim(),descricao:(f.descricao||`Desdobramento estratégico de ${tema}.`).trim(),acoes:(Array.isArray(f.acoes)?f.acoes:[]).filter(Boolean).slice(0,4),formatos:(Array.isArray(f.formatos)?f.formatos:[]).filter(Boolean).slice(0,3)})),canais:(canais.length?canais:[{canal:'Instagram',prioridade:'alta',tipo_conteudo:'reels, carrossel, stories',frequencia:'4-5x por semana'},{canal:'TikTok',prioridade:'alta',tipo_conteudo:'vídeos rápidos com gancho cultural',frequencia:'3-4x por semana'},{canal:'YouTube Shorts',prioridade:'media',tipo_conteudo:'cortes e desdobramentos',frequencia:'2x por semana'},{canal:'PR / creators',prioridade:'media',tipo_conteudo:'amplificação e prova social',frequencia:'pulsos quinzenais'}]).map(c=>({canal:(c.canal||'Canal').trim(),prioridade:['alta','media','baixa'].includes(c.prioridade)?c.prioridade:'media',tipo_conteudo:(c.tipo_conteudo||'conteúdo de campanha').trim(),frequencia:(c.frequencia||'semanal').trim()})),kpis:(kpis.length?kpis:[{metrica:'Alcance qualificado',meta:'+20%',periodo:'mensal'},{metrica:'Engajamento',meta:'acima de 4%',periodo:'semanal'},{metrica:'CTR',meta:'acima de 1,5%',periodo:'quinzenal'},{metrica:'Custo por resultado',meta:'reduzir 15%',periodo:'mensal'},{metrica:'Menções orgânicas',meta:'+30%',periodo:'mensal'},{metrica:'Conversão',meta:'crescimento contínuo',periodo:'mensal'}]).map(k=>({metrica:(k.metrica||'Métrica').trim(),meta:(k.meta||'A definir').trim(),periodo:(k.periodo||'mensal').trim()})),riscos:(riscos.length?riscos:[{risco:'Saturação do tema',impacto:'medio',mitigacao:'Renovar ângulos criativos semanalmente'},{risco:'Baixa diferenciação',impacto:'alto',mitigacao:'Trazer ativos proprietários da marca'},{risco:'Timing perder força',impacto:'medio',mitigacao:'Monitorar trend e adaptar calendário'}]).map(r=>({risco:(r.risco||'Risco de execução').trim(),impacto:['alto','medio','baixo'].includes(r.impacto)?r.impacto:'medio',mitigacao:(r.mitigacao||'Acompanhar dados e ajustar rápido').trim()})),proximos_passos:(passos.length?passos:['Validar big idea com stakeholders','Definir calendário das 2 primeiras semanas','Produzir kit criativo por canal','Configurar tracking e dashboard','Iniciar teste piloto de mensagens']).filter(Boolean).slice(0,5)};}
+async function irParaPlano(){if(!selMap.size)return;const pb2=document.getElementById('plano-cnt');if(pb2)pb2.style.display='inline';go('plano',document.getElementById('ni-plano'),'Planejamento Estratégico');const trends=[...selMap.values()];const cc=c=>c==='Trending Now'?'#d93025':c==='Emergindo'?'#f29900':'#1e8e3e';document.getElementById('plano-themes').innerHTML=`<div class="plan-themes">${trends.map(t=>`<span class="pt-tag"><span class="pt-dot" style="background:${cc(t.cat)}"></span>${t.titulo}<span style="font-size:10px;color:var(--t3);margin-left:5px;font-weight:400">${t.score}pts</span></span>`).join('')}</div>`;sp('out-plano','Gerando planejamento…');const p=`Você é um estrategista de marketing sênior para o mercado brasileiro. Gere um planejamento estratégico completo, prático e preenchido. Todos os campos devem vir completos. NENHUMA string vazia, nenhum placeholder e nenhum campo em branco. Retorne APENAS JSON válido sem markdown.
+Trends selecionadas: ${JSON.stringify(trends.map(t=>({titulo:t.titulo,contexto:t.ctx,categoria:t.cat,score:t.score,fonte:t.fonte||''})))}
+Regras: big_idea com 1 frase forte; insight_central com 1 frase objetiva; 3 fases preenchidas; pelo menos 4 canais; 6 KPIs; 3 riscos; 5 próximos passos.
+Schema: {"posicionamento":{"big_idea":"texto obrigatório","insight_central":"texto obrigatório","territorio_criativo":"texto obrigatório","publico_primario":"texto obrigatório","publico_secundario":"texto obrigatório","tom_de_voz":"texto obrigatório"},"fases":[{"fase":"Fase 1","periodo":"Semanas 1-2","titulo":"texto obrigatório","descricao":"texto obrigatório","acoes":["ação 1","ação 2","ação 3"],"formatos":["formato 1","formato 2"]},{"fase":"Fase 2","periodo":"Semanas 3-5","titulo":"texto obrigatório","descricao":"texto obrigatório","acoes":["ação 1","ação 2","ação 3"],"formatos":["formato 1","formato 2"]},{"fase":"Fase 3","periodo":"Semanas 6-8","titulo":"texto obrigatório","descricao":"texto obrigatório","acoes":["ação 1","ação 2","ação 3"],"formatos":["formato 1","formato 2"]}],"canais":[{"canal":"texto","prioridade":"alta","tipo_conteudo":"texto","frequencia":"texto"}],"kpis":[{"metrica":"texto","meta":"texto","periodo":"texto"}],"riscos":[{"risco":"texto","impacto":"alto|medio|baixo","mitigacao":"texto"}],"proximos_passos":["texto 1","texto 2","texto 3","texto 4","texto 5"]}`;try{const raw=await ai(p,2500);const d=normalizePlan(parseJSON(raw),trends);S.plano=d;renderPlano(d,trends);updCtx();gerarEvCal(d)}catch(e){errC('out-plano','Falha ao gerar planejamento.')}}
 function renderPlano(d,trends){const priBadge=p=>p==='alta'?`<span class="gtag gtag-now">Alta</span>`:p==='media'?`<span class="gtag gtag-em">Média</span>`:`<span class="gtag gtag-d">Baixa</span>`;const impBadge=p=>p==='alto'?`<span class="gtag gtag-now">Alto</span>`:p==='medio'?`<span class="gtag gtag-em">Médio</span>`:`<span class="gtag gtag-ev">Baixo</span>`;const SVG={s:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>`,c:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,ch:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.35h3a2 2 0 0 1 2 1.72c.128.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.572 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,k:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,r:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,ok:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,l:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`};const pb=(svg,t,badge,body,open=true)=>`<div class="pblock"><div class="pb-hd${open?' open':''}" onclick="togPB(this)"><div class="pb-ico">${svg}</div><span class="pb-title">${t}</span><span class="pb-badge">${badge}</span><span class="pb-ch${open?' open':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span></div><div class="pb-body${open?' open':''}">${body}</div></div>`;document.getElementById('out-plano').innerHTML=`${pb(SVG.s,'Posicionamento & Big Idea','Estratégia',`<div class="big-idea"><div class="bi-l">Big Idea</div><div class="bi-t">"${d.posicionamento?.big_idea||''}"</div></div><table class="data-table"><tr><td>Insight central</td><td>${d.posicionamento?.insight_central||''}</td></tr><tr><td>Território criativo</td><td>${d.posicionamento?.territorio_criativo||''}</td></tr><tr><td>Público primário</td><td>${d.posicionamento?.publico_primario||''}</td></tr><tr><td>Público secundário</td><td>${d.posicionamento?.publico_secundario||''}</td></tr><tr><td>Tom de voz</td><td>${d.posicionamento?.tom_de_voz||''}</td></tr></table>`)}${pb(SVG.c,'Calendário & Fases','Execução',`<div>${(d.fases||[]).map(f=>`<div class="tl-item"><div class="tl-ph">${f.fase}<span class="tl-per">${f.periodo}</span></div><div class="tl-b"><div class="tl-t">${f.titulo}</div><div class="tl-d">${f.descricao}</div><div class="tl-tags">${(f.acoes||[]).map(a=>`<span class="gtag gtag-d">${a}</span>`).join('')}${(f.formatos||[]).map(fm=>`<span class="gtag gtag-blue">${fm}</span>`).join('')}</div></div></div>`).join('')}</div>`)}${pb(SVG.ch,'Mix de Canais','Criativo',`<table class="data-table"><thead><tr><th>Canal</th><th>Prioridade</th><th>Conteúdo</th><th>Frequência</th></tr></thead><tbody>${(d.canais||[]).map(c=>`<tr><td>${c.canal}</td><td>${priBadge(c.prioridade)}</td><td>${c.tipo_conteudo}</td><td style="font-size:12px;color:var(--t3)">${c.frequencia}</td></tr>`).join('')}</tbody></table>`)}${pb(SVG.k,'KPIs & Métricas','Métricas',`<div class="kpi-grid">${(d.kpis||[]).map(k=>`<div class="kpi-c"><div class="kpi-l">${k.metrica}</div><div class="kpi-v">${k.meta}</div><div class="kpi-n">${k.periodo}</div></div>`).join('')}</div>`)}${pb(SVG.r,'Riscos & Mitigações','Estratégia',`<table class="data-table"><thead><tr><th>Risco</th><th>Impacto</th><th>Mitigação</th></tr></thead><tbody>${(d.riscos||[]).map(r=>`<tr><td>${r.risco}</td><td>${impBadge(r.impacto)}</td><td>${r.mitigacao}</td></tr>`).join('')}</tbody></table>`,false)}${pb(SVG.ok,'Próximos Passos','Execução',`<div>${(d.proximos_passos||[]).map((p,i)=>`<div class="step-row"><span class="step-n">${i+1}</span><span>${p}</span></div>`).join('')}</div>`)}${pb(SVG.l,'Fontes das Trends','Referências',`<div>${trends.map(t=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--b)"><div><div style="font-size:13px;font-weight:500;margin-bottom:2px">${t.titulo}</div><div style="font-size:12px;color:var(--t3)">${t.ctx}</div></div><div style="display:flex;gap:5px;align-items:center;flex-shrink:0;margin-left:12px"><span class="gtag gtag-d">${t.score}pts</span>${t.cat==='Trending Now'?'<span class="gtag gtag-now">Agora</span>':t.cat==='Emergindo'?'<span class="gtag gtag-em">Emergindo</span>':'<span class="gtag gtag-ev">Evergreen</span>'}${t.fonte?slink(t.fonte,t.q||t.titulo):''}</div></div>`).join('')}</div>`)}<div class="pa-row"><button class="gbutton gbutton-out" onclick="limparSel();go('trends',document.getElementById('ni-trends'),'Radar de Trends')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>Voltar</button><button class="gbutton gbutton-out" onclick="go('prompt',document.getElementById('ni-prompt'),'Prompt Studio')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/></svg>Prompt Studio</button><button class="gbutton gbutton-out" onclick="go('cal',document.getElementById('ni-cal'),'Calendário Editorial')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/></svg>Calendário</button><button class="gbutton" onclick="expPlano()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Exportar .txt</button></div>`}
 function togPB(h){const b=h.nextElementSibling,o=b.classList.toggle('open');h.classList.toggle('open',o);h.querySelector('.pb-ch').classList.toggle('open',o)}
 function expPlano(){const t=document.getElementById('out-plano').innerText;const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([t],{type:'text/plain'})),download:'ultrahype-planejamento.txt'});a.click()}
-async function gerarIdeias(){const tema=document.getElementById('inp-ideias').value.trim();if(!tema)return;const btn=document.getElementById('btn-ideias');btn.disabled=true;btn.textContent='Gerando…';sp('out-ideias','Criando conceitos…');const p=`Diretor criativo top Brasil. 3 conceitos distintos para: "${tema}".\nJSON:{"ideias":[{"titulo":"","tagline":"","descricao":"","nivel":"safe|bold|disruptivo","plataforma":"","janela":"","copys":["","",""],"referencias":["",""]}]}\nBrasil, muito diferentes entre si.`;try{const raw=await ai(p);const d=parseJSON(raw);S.ideias=d.ideias;S.tema_i=tema;renderIdeias(d.ideias||[]);saveHist(tema);updCtx()}catch(e){errC('out-ideias','Erro.')}btn.disabled=false;btn.textContent='Gerar'}
+async function gerarIdeias(){const tema=document.getElementById('inp-ideias').value.trim();if(!tema)return;const btn=document.getElementById('btn-ideias');btn.disabled=true;btn.textContent='Gerando…';sp('out-ideias','Criando conceitos…');const p=`Diretor criativo top Brasil. Gere 3 conceitos distintos para: "${tema}". Todos os campos são obrigatórios. NENHUMA string vazia, nenhum item em branco, nenhuma referência vazia. Cada ideia precisa ter título forte, tagline curta, descrição concreta, nível, plataforma principal, janela de oportunidade, 3 copys diferentes e 2 referências curtas.
+JSON:{"ideias":[{"titulo":"texto obrigatório","tagline":"texto obrigatório","descricao":"texto obrigatório","nivel":"safe|bold|disruptivo","plataforma":"texto obrigatório","janela":"texto obrigatório","copys":["copy 1","copy 2","copy 3"],"referencias":["referência 1","referência 2"]}]}
+Exatamente 3 ideias. Brasil, muito diferentes entre si.`;try{const raw=await ai(p);const d=normalizeIdeas(parseJSON(raw),tema);S.ideias=d.ideias;S.tema_i=tema;renderIdeias(d.ideias||[]);saveHist(tema);updCtx()}catch(e){errC('out-ideias','Erro.')}btn.disabled=false;btn.textContent='Gerar'}
 function renderIdeias(ideias){if(!ideias.length){errC('out-ideias','Nenhuma ideia.');return}document.getElementById('out-ideias').innerHTML=ideias.map(id=>`<div class="idea"><div class="idea-top"><div class="idea-tr"><div class="idea-name">${id.titulo}</div><span class="lv lv-${id.nivel}">${id.nivel}</span></div><div class="idea-tl">"${id.tagline}"</div></div><div class="idea-body"><div class="idea-desc">${id.descricao}</div><div class="sub-lbl">Copy hooks</div>${(id.copys||[]).map(c=>`<div class="copy-row">${c}</div>`).join('')}${id.referencias?.length?`<div class="sub-lbl" style="margin-top:10px">Referências</div><div style="display:flex;gap:5px;flex-wrap:wrap">${id.referencias.map(r=>`<span class="gtag gtag-blue">${r}</span>`).join('')}</div>`:''}</div><div class="idea-foot"><span class="gtag gtag-d">${id.plataforma}</span><span class="gtag gtag-d">${id.janela}</span></div></div>`).join('')}
 document.getElementById('inp-ideias').addEventListener('keydown',e=>{if(e.key==='Enter')gerarIdeias()});
 function lerArq(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{document.getElementById('inp-briefing').value=e.target.result.slice(0,4000)};r.readAsText(f)}
 async function analisarBriefing(){let texto=document.getElementById('inp-briefing').value.trim();if(!texto)return;
   texto=texto.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<[^>]{0,200}>/g,'').slice(0,4000);
-  if(!texto.trim())return;const btn=document.getElementById('btn-briefing');btn.disabled=true;btn.textContent='Analisando…';sp('out-briefing','Extraindo insights…');const p=`Estrategista de marketing. Briefing: "${texto}"\nJSON:{"produto":"","publico":"","tom":"","objetivos":["",""],"restricoes":[""],"trends_relevantes":[{"trend":"","fit_score":85,"justificativa":""},{"trend":"","fit_score":72,"justificativa":""},{"trend":"","fit_score":60,"justificativa":""}],"urgencia":7,"oportunidade":""}`;try{const raw=await ai(p);const d=parseJSON(raw);renderBriefing(d)}catch(e){errC('out-briefing','Erro.')}btn.disabled=false;btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Analisar com IA`}
+  if(!texto.trim())return;const btn=document.getElementById('btn-briefing');btn.disabled=true;btn.textContent='Analisando…';sp('out-briefing','Extraindo insights…');const p=`Estrategista de marketing. Analise o briefing abaixo e preencha todos os campos. NENHUMA string vazia, nenhum item em branco e nenhuma justificativa genérica.
+Briefing: "${texto}"
+JSON:{"produto":"texto obrigatório","publico":"texto obrigatório","tom":"texto obrigatório","objetivos":["objetivo 1","objetivo 2","objetivo 3"],"restricoes":["restrição 1","restrição 2"],"trends_relevantes":[{"trend":"texto obrigatório","fit_score":85,"justificativa":"texto obrigatório"},{"trend":"texto obrigatório","fit_score":72,"justificativa":"texto obrigatório"},{"trend":"texto obrigatório","fit_score":60,"justificativa":"texto obrigatório"}],"urgencia":7,"oportunidade":"texto obrigatório"}`;try{const raw=await ai(p);const d=normalizeBriefing(parseJSON(raw),texto);renderBriefing(d)}catch(e){errC('out-briefing','Erro.')}btn.disabled=false;btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Analisar com IA`}
 function renderBriefing(d){const uc=d.urgencia>=8?'var(--red)':d.urgencia>=5?'var(--amber)':'var(--green)';const brow=(l,v)=>v?`<div class="data-row"><span class="data-lbl">${l}</span><span class="data-val">${v}</span></div>`:'';document.getElementById('out-briefing').innerHTML=`<div class="gcard">${brow('Produto',d.produto)}${brow('Público',d.publico)}${brow('Tom',d.tom)}${brow('Objetivos',Array.isArray(d.objetivos)?d.objetivos.join(' · '):d.objetivos)}${d.restricoes?.length?brow('Restrições',d.restricoes.join(' · ')):''}<div class="data-row"><span class="data-lbl">Urgência</span><span class="data-val" style="color:${uc};font-weight:600">${d.urgencia}/10</span></div>${d.oportunidade?brow('Janela',d.oportunidade):''}</div>${d.trends_relevantes?.length?`<div style="margin-top:12px;font-size:14px;font-weight:500;margin-bottom:8px;font-family:'Google Sans',sans-serif">Trends com maior fit</div><div class="gcard">${d.trends_relevantes.map(t=>`<div class="fit-item"><div class="fit-top"><span class="fit-name">${t.trend}</span><span class="fit-pct">${t.fit_score}%</span></div><div class="fit-bar"><div class="fit-fill" style="width:${t.fit_score}%"></div></div><div class="fit-why">${t.justificativa}</div></div>`).join('')}</div>`:''}`}
-async function gerarMoodboard(){const tema=document.getElementById('inp-mood').value.trim();if(!tema)return;const btn=document.getElementById('btn-mood');btn.disabled=true;btn.textContent='Criando…';sp('out-mood','Montando direção visual…');const p=`Diretor de arte brasileiro. Moodboard para: "${tema}".\nJSON:{"conceito_visual":"","paleta":[{"hex":"#2D4A3E","nome":"","uso":""},{"hex":"#F5E6D0","nome":"","uso":""},{"hex":"#C8453A","nome":"","uso":""},{"hex":"#1A1A2E","nome":"","uso":""},{"hex":"#E8C547","nome":"","uso":""}],"tipografias":[{"nome":"","estilo":"display|corpo","descricao":""},{"nome":"","estilo":"","descricao":""}],"texturas":["","",""],"referencias":[{"titulo":"","tipo":"campanha|filme|artista|movimento","descricao":""},{"titulo":"","tipo":"","descricao":""},{"titulo":"","tipo":"","descricao":""}],"palavras_visuais":["","","","","",""],"evitar":["",""]}\nCores reais. Ousado.`;try{const raw=await ai(p);const d=parseJSON(raw);S.moodboard=d;S.tema_m=tema;renderMoodboard(d);updCtx()}catch(e){errC('out-mood','Erro.')}btn.disabled=false;btn.textContent='Criar'}
+async function gerarMoodboard(){const tema=document.getElementById('inp-mood').value.trim();if(!tema)return;const btn=document.getElementById('btn-mood');btn.disabled=true;btn.textContent='Criando…';sp('out-mood','Montando direção visual…');const p=`Diretor de arte brasileiro. Crie um moodboard completo para: "${tema}". Todos os campos são obrigatórios. NENHUMA string vazia, nenhum item em branco. A paleta deve trazer 5 cores reais e cada cor com nome e uso. As tipografias precisam ter nome, estilo e descrição. As referências precisam ter título, tipo e descrição.
+JSON:{"conceito_visual":"texto obrigatório","paleta":[{"hex":"#2D4A3E","nome":"texto obrigatório","uso":"texto obrigatório"},{"hex":"#F5E6D0","nome":"texto obrigatório","uso":"texto obrigatório"},{"hex":"#C8453A","nome":"texto obrigatório","uso":"texto obrigatório"},{"hex":"#1A1A2E","nome":"texto obrigatório","uso":"texto obrigatório"},{"hex":"#E8C547","nome":"texto obrigatório","uso":"texto obrigatório"}],"tipografias":[{"nome":"texto obrigatório","estilo":"display|corpo","descricao":"texto obrigatório"},{"nome":"texto obrigatório","estilo":"display|corpo","descricao":"texto obrigatório"}],"texturas":["texto 1","texto 2","texto 3"],"referencias":[{"titulo":"texto obrigatório","tipo":"campanha|filme|artista|movimento","descricao":"texto obrigatório"},{"titulo":"texto obrigatório","tipo":"campanha|filme|artista|movimento","descricao":"texto obrigatório"},{"titulo":"texto obrigatório","tipo":"campanha|filme|artista|movimento","descricao":"texto obrigatório"}],"palavras_visuais":["texto 1","texto 2","texto 3","texto 4","texto 5","texto 6"],"evitar":["texto 1","texto 2"]}
+Cores reais. Ousado.`;try{const raw=await ai(p);const d=normalizeMoodboard(parseJSON(raw),tema);S.moodboard=d;S.tema_m=tema;renderMoodboard(d);updCtx()}catch(e){errC('out-mood','Erro.')}btn.disabled=false;btn.textContent='Criar'}
 function renderMoodboard(d){document.getElementById('out-mood').innerHTML=`<div class="mood-title">${d.conceito_visual||''}</div><div class="pal-row">${(d.paleta||[]).map(c=>`<div class="swatch" style="background:${c.hex}"><div class="sw-hex" style="color:${isLight(c.hex)?'rgba(0,0,0,.7)':'rgba(255,255,255,.9)'}">${c.hex}</div><div class="sw-name" style="color:${isLight(c.hex)?'rgba(0,0,0,.45)':'rgba(255,255,255,.6)'}">${c.nome}</div></div>`).join('')}</div><div class="md-grid"><div class="md-card"><div class="md-card-hd">Tipografias</div>${(d.tipografias||[]).map(t=>`<div class="md-row"><div>${t.nome}<div class="md-sub">${t.descricao}</div></div><span class="gtag gtag-d">${t.estilo}</span></div>`).join('')}</div><div class="md-card"><div class="md-card-hd">Texturas & materiais</div>${(d.texturas||[]).map(t=>`<div class="md-row">${t}</div>`).join('')}</div></div><div class="kw-cloud">${(d.palavras_visuais||[]).map(p=>`<span class="kw-tag">${p}</span>`).join('')}</div><div class="gcard" style="overflow:hidden"><div style="padding:10px 16px 4px;font-size:11px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:.06em">Referências criativas</div>${(d.referencias||[]).map(r=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:10px 16px;border-top:1px solid var(--b)"><div><div style="font-size:13px;font-weight:500;margin-bottom:2px">${r.titulo}</div><div style="font-size:12px;color:var(--t3)">${r.descricao}</div></div><span class="gtag gtag-d" style="margin-left:10px;flex-shrink:0">${r.tipo}</span></div>`).join('')}</div>${d.evitar?.length?`<div class="info-card ic-default" style="margin-top:10px;background:var(--amber-lt);border-color:rgba(242,153,0,.3)"><div class="ic-ico" style="background:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ic-body" style="color:var(--amber)"><strong>Evitar:</strong> ${d.evitar.join(' · ')}</div></div>`:''}`}
 document.getElementById('inp-mood').addEventListener('keydown',e=>{if(e.key==='Enter')gerarMoodboard()});
 function adjSc(d){scVal=Math.max(3,Math.min(20,scVal+d));document.getElementById('sc-v').textContent=scVal}
 function togFmt(el){document.querySelectorAll('.fmt-opt').forEach(f=>f.classList.remove('on'));el.classList.add('on')}
 function selType(t){curType=t;document.querySelectorAll('.type-card').forEach(c=>c.classList.remove('sel'));document.getElementById('tc-'+t).classList.add('sel');document.getElementById('area-rot').style.display='block'}
-async function gerarRoteiro(){const tema=document.getElementById('inp-rot').value.trim();if(!tema)return;const btn=document.getElementById('btn-rot');btn.disabled=true;btn.textContent='Gerando...';sp('out-rot','Criando…');const tipos={video:'roteiro de vídeo com cenas, narração e direção de câmera',reels:'script de Reels com hook, desenvolvimento e CTA',ppt:'estrutura de PPT com slides numerados, título, bullets e sugestão visual',pitch:'pitch deck para aprovação de campanha'};const p=`Redator criativo. ${tipos[curType]} para: "${tema}". Slides/cenas: ${scVal}. Formato: ${document.querySelector('.fmt-opt.on')?.textContent?.trim()||'16:9'}.\nJSON:{"tipo":"","tema":"","total":${scVal},"duracao_estimada":"","slides":[{"numero":1,"titulo":"","conteudo":"","narração":"","nota_visual":""}]}\n${scVal} itens. Brasil.`;try{const raw=await ai(p,2500);const d=parseJSON(raw);window._rotData=d;renderRoteiro(d)}catch(e){errC('out-rot','Erro.')}btn.disabled=false;btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg>Gerar conteúdo`}
+async function gerarRoteiro(){const tema=document.getElementById('inp-rot').value.trim();if(!tema)return;const btn=document.getElementById('btn-rot');btn.disabled=true;btn.textContent='Gerando...';sp('out-rot','Criando…');const tipos={video:'roteiro de vídeo com cenas, narração e direção de câmera',reels:'script de Reels com hook, desenvolvimento e CTA',ppt:'estrutura de PPT com slides numerados, título, bullets e sugestão visual',pitch:'pitch deck para aprovação de campanha'};const p=`Redator criativo. Gere ${tipos[curType]} para: "${tema}". Slides/cenas: ${scVal}. Formato: ${document.querySelector('.fmt-opt.on')?.textContent?.trim()||'16:9'}. Todos os campos são obrigatórios. NENHUMA string vazia, nenhum slide em branco, nenhuma nota genérica. Cada slide precisa ter título, conteúdo, narração e nota_visual.
+JSON:{"tipo":"texto obrigatório","tema":"texto obrigatório","total":${scVal},"duracao_estimada":"texto obrigatório","slides":[{"numero":1,"titulo":"texto obrigatório","conteudo":"texto obrigatório","narração":"texto obrigatório","nota_visual":"texto obrigatório"}]}
+Exatamente ${scVal} itens. Brasil.`;try{const raw=await ai(p,2500);const d=normalizeRoteiro(parseJSON(raw),tema);window._rotData=d;renderRoteiro(d)}catch(e){errC('out-rot','Erro.')}btn.disabled=false;btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg>Gerar conteúdo`}
 function renderRoteiro(d){document.getElementById('out-rot').innerHTML=`<div class="slide-out"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div><div style="font-size:15px;font-weight:500;font-family:'Google Sans',sans-serif">${d.tipo}</div><div style="font-size:12px;color:var(--t3);margin-top:1px">${d.total} itens · ${d.duracao_estimada}</div></div><span class="gtag gtag-ev">Pronto</span></div>${(d.slides||[]).map(s=>`<div class="slide-card"><div class="slide-num"><span class="slide-n">${s.numero}</span><span class="slide-title">${s.titulo}</span></div>${s.conteudo?`<div class="slide-body">${s.conteudo}</div>`:''}${s['narração']?`<div class="slide-narr"><span class="slide-narr-l">Narração</span>${s['narração']}</div>`:''}${s.nota_visual?`<div class="slide-vis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/></svg>${s.nota_visual}</div>`:''}</div>`).join('')}<div class="pa-row"><button class="gbutton" onclick="expRot()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Exportar roteiro</button></div></div>`}
 function expRot(){if(!window._rotData)return;const d=window._rotData;let t=`${d.tipo.toUpperCase()}\n${d.tema}\n${'─'.repeat(40)}\n\n`;(d.slides||[]).forEach(s=>{t+=`[${s.numero}] ${s.titulo}\n${s.conteudo||''}\n${s['narração']?`NARRAÇÃO: ${s['narração']}\n`:''}${s.nota_visual?`VISUAL: ${s.nota_visual}\n`:''}\n`});const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([t],{type:'text/plain'})),download:'ultrahype-roteiro.txt'});a.click()}
 function selPsCat(cat){curCat=cat;['video','imagem','ppt','texto'].forEach(c=>{document.getElementById('pscat-'+c).classList.toggle('on',c===cat);document.getElementById('ps-tools-'+c).style.display=c===cat?'flex':'none'})}
@@ -872,11 +1115,11 @@ function renderRefs(){
   }).join('')+`<button class="rb-add" onclick="document.getElementById('modal-ref').style.display='block'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Adicionar referência</span></button>`;
   updRefsCnt();
 }
-function delRef(i){refs.splice(i,1);sSet('uh-refs',refs);renderRefs()}
+function delRef(i){refs.splice(i,1);saveRefsState();renderRefs()}
 function closeModal(){document.getElementById('modal-ref').style.display='none'}
-function salvarRef(){const titulo=document.getElementById('mf-titulo').value.trim();if(!titulo)return;const url=safeUrl(document.getElementById('mf-url').value.trim());if(document.getElementById('mf-url').value.trim() && !url){showToast('URL inválida. Use http(s).');return;}refs.push({titulo,tipo:document.getElementById('mf-tipo').value,url,notas:document.getElementById('mf-notas').value,tag:document.getElementById('mf-tag').value});sSet('uh-refs',refs);closeModal();renderRefs();showToast('Referência salva!');['mf-titulo','mf-url','mf-notas','mf-tag'].forEach(id=>document.getElementById(id).value='')}
+function salvarRef(){const titulo=document.getElementById('mf-titulo').value.trim();if(!titulo)return;const url=safeUrl(document.getElementById('mf-url').value.trim());if(document.getElementById('mf-url').value.trim() && !url){showToast('URL inválida. Use http(s).');return;}refs.unshift({titulo,tipo:document.getElementById('mf-tipo').value,url,notas:document.getElementById('mf-notas').value,tag:document.getElementById('mf-tag').value,created_at:new Date().toISOString()});saveRefsState();closeModal();renderRefs();showToast('Referência salva!');['mf-titulo','mf-url','mf-notas','mf-tag'].forEach(id=>document.getElementById(id).value='')}
 renderRefs();
-function gerarEvCal(plano){calEv=[];const base=new Date();(plano.fases||[]).forEach((f,fi)=>{const start=new Date(base);start.setDate(base.getDate()+fi*14);calEv.push({data:start.toISOString().slice(0,10),texto:f.titulo,tipo:fi===0?'ev-b':fi===1?'ev-c':'ev-l'});(f.acoes||[]).forEach((a,ai)=>{const d=new Date(start);d.setDate(start.getDate()+ai*3);calEv.push({data:d.toISOString().slice(0,10),texto:a.slice(0,25),tipo:'ev-c'})})});(plano.kpis||[]).slice(0,2).forEach((k,i)=>{const d=new Date(base);d.setDate(base.getDate()+42+i*7);calEv.push({data:d.toISOString().slice(0,10),texto:k.metrica,tipo:'ev-r'})})}
+function gerarEvCal(plano){calEv=[];const base=new Date();(plano.fases||[]).forEach((f,fi)=>{const start=new Date(base);start.setDate(base.getDate()+fi*14);calEv.push({data:start.toISOString().slice(0,10),texto:f.titulo,tipo:fi===0?'ev-b':fi===1?'ev-c':'ev-l'});(f.acoes||[]).forEach((a,ai)=>{const d=new Date(start);d.setDate(start.getDate()+ai*3);calEv.push({data:d.toISOString().slice(0,10),texto:a.slice(0,25),tipo:'ev-c'})})});(plano.kpis||[]).slice(0,2).forEach((k,i)=>{const d=new Date(base);d.setDate(base.getDate()+42+i*7);calEv.push({data:d.toISOString().slice(0,10),texto:k.metrica,tipo:'ev-r'})});saveCalAuto()}
 function gerarCalendario(){if(!S.plano){showToast('Gere um planejamento primeiro');return}gerarEvCal(S.plano);renderCal();showToast('Calendário gerado!')}
 function navMes(d){calM+=d;if(calM<0){calM=11;calY--}if(calM>11){calM=0;calY++}renderCal()}
 function renderCal(){const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];document.getElementById('cal-lbl').textContent=new Date(calY,calM,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});const primeiro=new Date(calY,calM,1).getDay();const total=new Date(calY,calM+1,0).getDate();const hoje=new Date().toISOString().slice(0,10);let html=dias.map(d=>`<div class="cal-dh">${d}</div>`).join('');for(let i=0;i<primeiro;i++)html+=`<div class="cal-day cal-empty"></div>`;for(let d=1;d<=total;d++){const ds=`${calY}-${String(calM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const evsDia=calEv.filter(e=>e.data===ds);html+=`<div class="cal-day${ds===hoje?' today':''}"><div class="cal-dn">${d}</div>${evsDia.map(e=>`<div class="cal-ev ${e.tipo}">${e.texto}</div>`).join('')}</div>`}document.getElementById('out-cal').innerHTML=`<div class="cal-grid">${html}</div>`}
@@ -1490,6 +1733,181 @@ function enviarContato(){
   window.location.href='mailto:guilhermecarocia@gmail.com?subject='+subject+'&body='+body;
   showToast('Mensagem enviada! Entraremos em contato em breve.');
 }
+
+
+// ── HARDENING V3: DOM seguro para histórico / referências / calendário ─────────────────
+function clearNode(el){ while(el && el.firstChild) el.removeChild(el.firstChild); }
+function mk(tag, attrs={}, text){
+  const el=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs||{})){
+    if(v===undefined||v===null) continue;
+    if(k==='class') el.className=v;
+    else if(k==='style') el.style.cssText=v;
+    else if(k==='dataset') Object.entries(v).forEach(([dk,dv])=>{ if(dv!==undefined&&dv!==null) el.dataset[dk]=String(dv); });
+    else if(k==='type') el.type=v;
+    else el.setAttribute(k,v);
+  }
+  if(text!==undefined&&text!==null) el.textContent=String(text);
+  return el;
+}
+
+renderRefs = function(){
+  const el=document.getElementById('refs-grid');
+  if(!el) return;
+  clearNode(el);
+  refs.map(sanitizeRef).filter(Boolean).forEach((r,i)=>{
+    const card=mk('div',{class:'rb'});
+    card.append(
+      mk('div',{class:'rb-type'}, r.tipo),
+      mk('div',{class:'rb-title'}, r.titulo),
+      mk('div',{class:'rb-desc'}, r.notas||'')
+    );
+    const foot=mk('div',{class:'rb-foot'});
+    foot.appendChild(mk('span',{class:'gtag gtag-d'}, r.tag||''));
+    const actions=mk('div',{style:'display:flex;gap:4px'});
+    const href=safeUrl(r.url);
+    if(href){
+      const a=mk('a',{href, target:'_blank', rel:'noopener noreferrer nofollow', class:'rb-del', style:'opacity:1;color:var(--blue)'});
+      a.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+      actions.appendChild(a);
+    }
+    const delBtn=mk('button',{class:'rb-del', type:'button', dataset:{action:'delete-ref', index:i}});
+    delBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+    actions.appendChild(delBtn);
+    foot.appendChild(actions);
+    card.appendChild(foot);
+    el.appendChild(card);
+  });
+  const addBtn=mk('button',{class:'rb-add', type:'button', dataset:{action:'open-ref-modal'}});
+  addBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>'+(lang==='en'?'Add reference':'Adicionar referência')+'</span>';
+  el.appendChild(addBtn);
+  updRefsCnt();
+};
+
+openCalDay = function(ds){
+  const dateEl=document.getElementById('cal-day-date');
+  const inputEl=document.getElementById('cal-day-input');
+  const dsEl=document.getElementById('cal-day-ds');
+  const evsWrap=document.getElementById('cal-day-evs');
+  if(dateEl) dateEl.textContent=new Date(ds+'T12:00:00').toLocaleDateString(lang==='en'?'en-US':'pt-BR',{weekday:'long',day:'numeric',month:'long'});
+  if(inputEl) inputEl.value='';
+  if(dsEl) dsEl.value=ds;
+  if(evsWrap){
+    clearNode(evsWrap);
+    const evs=calManual.filter(e=>e.data===ds).map(sanitizeManualEvent).filter(Boolean);
+    if(evs.length){
+      evs.forEach((e)=>{
+        const idx=calManual.findIndex(x=>x===e || (x.data===e.data && x.texto===e.texto && x.color===e.color));
+        const row=mk('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--b);font-size:13px'});
+        row.appendChild(mk('span',{style:`width:10px;height:10px;border-radius:50%;background:${e.color};flex-shrink:0;display:inline-block`}));
+        row.appendChild(mk('span',{style:'flex:1'}, e.texto));
+        const btn=mk('button',{type:'button',dataset:{action:'delete-manual-modal', ds, index:idx},style:'border:none;background:none;cursor:pointer;color:var(--t3);font-size:16px;line-height:1'}, '✕');
+        row.appendChild(btn);
+        evsWrap.appendChild(row);
+      });
+    }else{
+      evsWrap.appendChild(mk('div',{style:'font-size:12px;color:var(--t3);padding:8px 0'}, lang==='pt'?'Nenhum evento. Adicione abaixo.':'No events. Add below.'));
+    }
+  }
+  document.getElementById('cal-day-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('cal-day-input')?.focus(),100);
+  mLabels.forEach((el,i)=>{ if(mLabelKeys[i]) el.textContent=t(mLabelKeys[i]); });
+  const mBtns=document.querySelectorAll('.modal-btns .mbtn');
+  if(mBtns[0]) mBtns[0].textContent=t('modal.cancel');
+  if(mBtns[1]) mBtns[1].textContent=t('modal.save');
+  renderHist();
+};
+
+renderHist = function(){
+  const el=document.getElementById('nav-hist');
+  if(!el) return;
+  clearNode(el);
+  if(!hist.length){
+    el.appendChild(mk('div',{style:'font-size:12px;color:var(--t3);padding:4px 12px'}, t('hist.empty')));
+    return;
+  }
+  const c=['#1a73e8','#1e8e3e','#d93025','#f29900','#8430ce','#129eaf'];
+  hist.slice(0,6).forEach((h,i)=>{
+    const item=mk('div',{class:'nav-item',style:'cursor:pointer',dataset:{action:'hist-search', tema: String(h.tema||'')}});
+    item.appendChild(mk('div',{class:'nav-dot',style:`background:${c[i%c.length]}`}));
+    item.appendChild(mk('span',{style:'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px'}, h.tema||''));
+    el.appendChild(item);
+  });
+};
+
+renderCal = function() {
+  const locale = lang==='en' ? 'en-US' : 'pt-BR';
+  const dias = t('cal.days').split(',');
+  const out=document.getElementById('out-cal');
+  const lbl=document.getElementById('cal-lbl');
+  if(!out || !lbl) return;
+  lbl.textContent=new Date(calY,calM,1).toLocaleDateString(locale,{month:'long',year:'numeric'});
+  const primeiro=new Date(calY,calM,1).getDay();
+  const total=new Date(calY,calM+1,0).getDate();
+  const hoje=new Date().toISOString().slice(0,10);
+  clearNode(out);
+  const grid=mk('div',{class:'cal-grid'});
+  dias.forEach(d=>grid.appendChild(mk('div',{class:'cal-dh'}, d)));
+  for(let i=0;i<primeiro;i++) grid.appendChild(mk('div',{class:'cal-day cal-empty'}));
+  for(let d=1;d<=total;d++){
+    const ds=`${calY}-${String(calM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const evsDia=calEv.filter(e=>e.data===ds).map(sanitizeCalendarEvent).filter(Boolean);
+    const manEvs=calManual.filter(e=>e.data===ds).map(sanitizeManualEvent).filter(Boolean);
+    const day=mk('div',{class:`cal-day${ds===hoje?' today':''}${(evsDia.length||manEvs.length)?' has-events':''}`,dataset:{action:'open-cal-day', ds}});
+    day.appendChild(mk('div',{class:'cal-dn'}, d));
+    evsDia.forEach(e=>{
+      const ev=mk('div',{class:`cal-ev ${String(e.tipo||'').replace(/[^a-z-]/gi,'')}`}, e.texto||'');
+      ev.title=e.texto||'';
+      day.appendChild(ev);
+    });
+    manEvs.forEach((e,idx)=>{
+      const ev=mk('div',{class:'cal-ev cal-ev-manual',style:`background:${e.color}20;color:${e.color};position:relative`,title:e.texto||'',dataset:{action:'manual-ev'}});
+      ev.textContent=e.texto||'';
+      const del=mk('span',{class:'cal-ev-del',dataset:{action:'delete-manual', ds, index:idx}}, '✕');
+      ev.appendChild(del);
+      day.appendChild(ev);
+    });
+    day.appendChild(mk('div',{class:'cal-add-hint'}, '+ add'));
+    grid.appendChild(day);
+  }
+  out.appendChild(grid);
+  const totalEv = calEv.length + calManual.length;
+  const calBadge = document.getElementById('cal-ev-cnt');
+  if(calBadge){ if(totalEv>0){calBadge.style.display='inline';calBadge.textContent=String(totalEv);}else calBadge.style.display='none'; }
+};
+
+document.addEventListener('click', function(e){
+  const refDel=e.target.closest('[data-action="delete-ref"]');
+  if(refDel){ delRef(Number(refDel.dataset.index)); return; }
+  const refOpen=e.target.closest('[data-action="open-ref-modal"]');
+  if(refOpen){ document.getElementById('modal-ref').style.display='block'; return; }
+  const histItem=e.target.closest('[data-action="hist-search"]');
+  if(histItem){
+    const tema=histItem.dataset.tema||'';
+    const inp=document.getElementById('inp-trends');
+    if(inp) inp.value=tema;
+    go('trends',document.getElementById('ni-trends'),t('nav.trends'));
+    buscarTrends();
+    return;
+  }
+  const openDay=e.target.closest('[data-action="open-cal-day"]');
+  if(openDay && !e.target.closest('[data-action="delete-manual"]') && !e.target.closest('[data-action="manual-ev"]')){
+    openCalDay(openDay.dataset.ds);
+    return;
+  }
+  const delManual=e.target.closest('[data-action="delete-manual"]');
+  if(delManual){
+    e.stopPropagation();
+    delManualEv(delManual.dataset.ds, Number(delManual.dataset.index));
+    return;
+  }
+  const delManualModal=e.target.closest('[data-action="delete-manual-modal"]');
+  if(delManualModal){
+    delManualEvModal(delManualModal.dataset.ds, Number(delManualModal.dataset.index));
+    return;
+  }
+});
+
 </script>
 </body>
 </html>
