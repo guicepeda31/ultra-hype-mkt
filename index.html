@@ -550,21 +550,29 @@ textarea.ta:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,115,232,
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPA_URL='https://fzqhznzstrxfrcvlupru.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6cWh6bnpzdHJ4ZnJjdmx1cHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MDc5ODksImV4cCI6MjA4OTI4Mzk4OX0.xgs6fFwRWuCWGOe22Bq_8MwwGelD3aYpKnevDPysOA8';
-let supa=null;
+let _supa=null;
+let authInitialized=false;
+let authSubscription=null;
+let authBusy=false;
 let currentUser=null;
+let currentSession=null;
 let profile=null;
 let cloudStateLoaded=false;
 let saveCloudTimer=null;
-const DAILY_LIMIT=30;
-let usageState={day_key:new Date().toISOString().slice(0,10),requests_today:0};
 let aiBusy=false;
+let usageRemaining=null;
+let usageLimit=30;
+let usageCooldownUntil=0;
 function initSupa(){
   try{
-    if(window.supabase&&!supa){
-      supa=window.supabase.createClient(SUPA_URL,SUPA_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    if(_supa) return _supa;
+    if(window.supabase&&SUPA_URL&&SUPA_KEY){
+      _supa=window.supabase.createClient(SUPA_URL,SUPA_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
     }
-  }catch(e){}
-  return supa;
+  }catch(e){
+    console.warn('Supabase init error',e);
+  }
+  return _supa;
 }
 // ── STATE GLOBAL ──────────────────────────────────────────
 const S={trends:null,ideias:null,moodboard:null,plano:null,tema_t:'',tema_i:'',tema_m:''};
@@ -628,61 +636,66 @@ function parseJSON(raw) {
   try{return JSON.parse(s.replace(/,\s*([}\]])/g,'$1').replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":'))}catch(_){}
   throw new Error('JSON parse failed');
 }
-async function ai(prompt,maxTokens=2000,retries=1){
-  if(!(await checkUsage())) return null;
-  if(aiBusy){showToast(lang==='pt'?'Aguarde a resposta anterior terminar':'Wait for the previous response to finish');return null;}
+async function ai(prompt,maxTokens=2000){
+  if(aiBusy){showToast(lang==='en'?'Wait for the current response to finish':'Aguarde a resposta atual terminar');return null;}
+  if(!await checkUsage()) return null;
   aiBusy=true;
   try{
-    for(let attempt=0;attempt<=retries;attempt++){
-      try{
-        let authHeader = {};
-        try {
-          const s = initSupa();
-          if (s) {
-            const { data } = await s.auth.getSession();
-            if (data?.session?.access_token) {
-              authHeader = { 'Authorization': 'Bearer ' + data.session.access_token };
-            }
-          }
-        } catch(_) {}
-        const res=await fetch('/api/chat',{
-          method:'POST',
-          headers:{
-            'Content-Type':'application/json',
-            'Accept':'application/json',
-            'X-Requested-With':'XMLHttpRequest',
-            ...authHeader
-          },
-          body:JSON.stringify({prompt,maxTokens})
-        });
-        const payload=await res.json().catch(()=>({}));
-        if(!res.ok){
-          if(res.status===429){
-            if(payload&&payload.code==='daily_limit_exceeded'){
-              usageState={day_key:new Date().toISOString().slice(0,10),requests_today:DAILY_LIMIT};
-              updateUsageBadge();
-              showUsageModal('limit');
-              return null;
-            }
-            if(attempt<retries){
-              await new Promise(r=>setTimeout(r,2200*(attempt+1)));
-              continue;
-            }
-            showToast(lang==='pt'?'Muita demanda agora. Tente novamente em alguns segundos.':'High demand right now. Try again in a few seconds.');
-            return null;
-          }
-          throw new Error(`API ${res.status}`);
-        }
-        const text=payload.text;
-        if(!text) throw new Error('Empty response');
-        incrementUsage(typeof payload.requests_today==='number'?payload.requests_today:null);
-        return text;
-      }catch(e){
-        if(attempt===retries) throw e;
-        await new Promise(r=>setTimeout(r,1200*(attempt+1)));
-      }
+    let authHeader={};
+    const token=currentSession&&currentSession.access_token?currentSession.access_token:null;
+    if(token){
+      authHeader={Authorization:'Bearer '+token};
     }
-  } finally {
+    const res=await fetch('/api/chat',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Accept':'application/json',
+        'X-Requested-With':'XMLHttpRequest',
+        ...authHeader
+      },
+      body:JSON.stringify({prompt,maxTokens})
+    });
+
+    if(res.status===401){
+      showToast(lang==='en'?'Sign in to use AI':'Faça login para usar a IA');
+      showLoginModal('login');
+      return null;
+    }
+
+    if(res.status===429){
+      const data=await res.json().catch(()=>({}));
+      if(data?.retry_after_ms){
+        usageCooldownUntil=Date.now()+Number(data.retry_after_ms||0);
+        updateUsageBadge();
+        showToast((lang==='en'?'Wait ':'Aguarde ')+Math.max(1,Math.ceil((data.retry_after_ms||0)/1000))+'s');
+      }else{
+        if(typeof data?.remaining==='number') usageRemaining=data.remaining;
+        if(typeof data?.limit==='number') usageLimit=data.limit;
+        updateUsageBadge();
+        showToast(data?.error || (lang==='en'?'Daily limit reached':'Limite diário atingido'));
+      }
+      return null;
+    }
+
+    if(!res.ok){
+      const e=await res.json().catch(()=>({}));
+      throw new Error(e?.details||e?.error||`API ${res.status}`);
+    }
+
+    const data=await res.json();
+    if(typeof data?.remaining==='number') usageRemaining=data.remaining;
+    if(typeof data?.limit==='number') usageLimit=data.limit;
+    usageCooldownUntil=Date.now()+4000;
+    updateUsageBadge();
+    const text=data?.text;
+    if(!text) throw new Error('Empty response');
+    return text;
+  }catch(e){
+    console.error('ai error:',e);
+    showToast(lang==='en'?'Error generating response':'Erro ao gerar resposta');
+    throw e;
+  }finally{
     aiBusy=false;
   }
 }
@@ -712,14 +725,29 @@ function persistLocalState(){
   }catch(_){ }
 }
 async function ensureProfile(user){
-  const s=initSupa(); if(!s||!user) return null;
+  const s=initSupa(); if(!s||!user||!user.id) return null;
   try{
     const meta=user.user_metadata||{};
     const fullName=(meta.full_name||meta.name||user.email?.split('@')[0]||'Usuário').trim();
-    const payload={id:user.id,email:user.email||null,full_name:fullName,avatar_url:meta.avatar_url||null,updated_at:new Date().toISOString()};
-    const { data, error } = await s.from('profiles').upsert(payload,{onConflict:'id'}).select('*').single();
-    if(!error&&data){ profile=data; return data; }
-  }catch(_){ }
+
+    const existing=await s.from('profiles').select('*').eq('id',user.id).maybeSingle();
+    if(!existing.error&&existing.data){
+      profile={...existing.data,full_name:existing.data.full_name||fullName};
+      return profile;
+    }
+
+    const payload={id:user.id,email:user.email||null};
+    const inserted=await s.from('profiles').insert(payload).select('*').single();
+    if(!inserted.error&&inserted.data){
+      profile={...inserted.data,full_name:inserted.data.full_name||fullName};
+      return profile;
+    }
+
+    if(inserted.error) console.error('profiles insert error:', inserted.error);
+    if(existing.error) console.error('profiles select error:', existing.error);
+  }catch(err){
+    console.error('ensureProfile error:', err);
+  }
   profile={id:user.id,email:user.email||null,full_name:(user.user_metadata&&user.user_metadata.full_name)||user.email?.split('@')[0]||'Usuário'};
   return profile;
 }
@@ -774,88 +802,56 @@ async function saveCloudState(force=false){
   if(force) return run();
   saveCloudTimer=setTimeout(run,700);
 }
-function usageDayKey(){ return new Date().toISOString().slice(0,10); }
-async function refreshUsage(){
-  const badge=document.getElementById('usage-badge');
-  if(!badge) return;
-  if(!currentUser){
-    usageState={day_key:usageDayKey(),requests_today:0};
-    updateUsageBadge();
-    return;
-  }
-  const s=initSupa(); if(!s){ updateUsageBadge(); return; }
-  try{
-    const { data, error } = await s.from('user_usage').select('day_key,requests_today').eq('id',currentUser.id).maybeSingle();
-    if(error) throw error;
-    if(data && data.day_key===usageDayKey()){
-      usageState={day_key:data.day_key,requests_today:Number(data.requests_today||0)};
-    }else{
-      usageState={day_key:usageDayKey(),requests_today:0};
-    }
-  }catch(_){
-    usageState={day_key:usageDayKey(),requests_today:0};
-  }
-  updateUsageBadge();
-}
 function updateUsageBadge(){
   const badge=document.getElementById('usage-badge');
   if(!badge) return;
+  const now=Date.now();
+  if(usageCooldownUntil && usageCooldownUntil>now){
+    const secs=Math.max(1,Math.ceil((usageCooldownUntil-now)/1000));
+    badge.textContent=(lang==='en'?'Cooldown: ':'Aguarde: ')+secs+'s';
+    badge.style.color='var(--amber)';
+    return;
+  }
   if(currentUser){
-    const left=Math.max(0,DAILY_LIMIT-Number(usageState.requests_today||0));
-    badge.textContent=lang==='pt'
-      ? `${left}/30 IA restantes hoje`
-      : `${left}/30 AI requests left today`;
-    badge.style.color=left<=3?'var(--red)':left<=10?'var(--amber)':'var(--green)';
+    if(typeof usageRemaining==='number'){
+      badge.textContent=(lang==='en'?'AI left today: ':'IA restante hoje: ')+usageRemaining+'/'+usageLimit;
+      badge.style.color=usageRemaining>5?'var(--green)':(usageRemaining>0?'var(--amber)':'var(--red)');
+    }else{
+      badge.textContent=(lang==='en'?'Cloud save on':'Salvamento em nuvem ativo');
+      badge.style.color='var(--green)';
+    }
   }else{
-    badge.textContent=lang==='pt'
-      ? 'Entre para usar até 30 IA/dia'
-      : 'Sign in to use up to 30 AI/day';
+    badge.textContent=(lang==='en'?'Sign in to use AI':'Faça login para usar a IA');
     badge.style.color='var(--t3)';
   }
 }
-function showUsageModal(kind){
-  const isPT=lang==='pt';
-  let html='';
-  if(!currentUser){
-    html=isPT
-      ? `Para controlar custo, a IA fica disponível para <strong>usuários logados</strong>.<br><br>Entre ou crie sua conta para usar até <strong>30 requisições por dia</strong>.`
-      : `To control cost, AI is available for <strong>signed-in users</strong>.<br><br>Sign in or create your account to use up to <strong>30 requests per day</strong>.`;
-  }else{
-    html=isPT
-      ? `Você atingiu o limite de <strong>30 requisições de IA hoje</strong>.<br><br>Seu acesso renova automaticamente amanhã.`
-      : `You reached the limit of <strong>30 AI requests today</strong>.<br><br>Your access renews automatically tomorrow.`;
-  }
-  document.getElementById('usage-modal-msg').innerHTML=html;
+function showUsageModal(){
+  document.getElementById('usage-modal-msg').innerHTML=lang==='pt'
+    ?`Cada conta pode fazer <strong>30 requisições de IA por dia</strong>.<br><br>Também existe um pequeno intervalo entre envios para evitar spam e proteger o consumo das APIs.`
+    :`Each account can make <strong>30 AI requests per day</strong>.<br><br>There is also a short cooldown between requests to prevent spam and protect API usage.`;
   document.getElementById('usage-modal').style.display='block';
 }
 async function checkUsage(){
-  if(!currentUser){ showUsageModal('login'); return false; }
-  if(usageState.day_key!==usageDayKey()) usageState={day_key:usageDayKey(),requests_today:0};
-  if(Number(usageState.requests_today||0)>=DAILY_LIMIT){ showUsageModal('limit'); return false; }
-  const s=initSupa(); if(!s) return true;
-  try{
-    const { data, error } = await s.from('user_usage').select('day_key,requests_today').eq('id',currentUser.id).maybeSingle();
-    if(error) throw error;
-    if(data && data.day_key===usageDayKey()){
-      usageState={day_key:data.day_key,requests_today:Number(data.requests_today||0)};
-    }else{
-      usageState={day_key:usageDayKey(),requests_today:0};
-    }
-  }catch(_){}
-  updateUsageBadge();
-  if(Number(usageState.requests_today||0)>=DAILY_LIMIT){ showUsageModal('limit'); return false; }
+  if(!currentUser){
+    showToast(lang==='en'?'Sign in to use AI':'Faça login para usar a IA');
+    showLoginModal('login');
+    return false;
+  }
+  const now=Date.now();
+  if(usageCooldownUntil && usageCooldownUntil>now){
+    showToast((lang==='en'?'Wait ':'Aguarde ')+Math.max(1,Math.ceil((usageCooldownUntil-now)/1000))+'s');
+    return false;
+  }
+  if(typeof usageRemaining==='number' && usageRemaining<=0){
+    showUsageModal();
+    return false;
+  }
   return true;
 }
-function incrementUsage(serverCount=null){
-  if(typeof serverCount==='number'){
-    usageState={day_key:usageDayKey(),requests_today:serverCount};
-  }else{
-    usageState={day_key:usageDayKey(),requests_today:Number(usageState.requests_today||0)+1};
-  }
-  updateUsageBadge();
-}
-function getUsageLeft(){ return Math.max(0,DAILY_LIMIT-Number(usageState.requests_today||0)); }
+async function incrementUsage(){ updateUsageBadge(); }
+function getUsageLeft(){ return typeof usageRemaining==='number'?usageRemaining:Infinity; }
 function updUsageBadge(){ updateUsageBadge(); }
+setInterval(()=>{ if(usageCooldownUntil) updateUsageBadge(); },1000);
 function showLoginModal(mode='login'){document.getElementById('login-modal').style.display='block';switchAuthMode(mode);}
 function closeLoginModal(){document.getElementById('login-modal').style.display='none';}
 function closeUsageModal(){document.getElementById('usage-modal').style.display='none';}
@@ -870,6 +866,7 @@ function switchAuthMode(mode){
   document.getElementById('auth-mode').value=mode;
 }
 async function submitAuth(){
+  if(authBusy) return;
   var mode=document.getElementById('auth-mode').value;
   var name=document.getElementById('auth-name').value.trim();
   var email=document.getElementById('auth-email').value.trim().toLowerCase();
@@ -881,6 +878,7 @@ async function submitAuth(){
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){showToast(isPT?'E-mail inválido':'Invalid email');return;}
   if(pass.length < 8){showToast(isPT?'Senha deve ter pelo menos 8 caracteres':'Password must be at least 8 characters');return;}
   btn.disabled=true;btn.textContent=isPT?'Aguarde...':'Loading...';
+  authBusy=true;
   try{
     var s=initSupa();if(!s) throw new Error('SDK');
     if(mode==='register'){
@@ -899,12 +897,15 @@ async function submitAuth(){
     if(/Email not confirmed/i.test(msg)) showToast(isPT?'Confirme seu email para entrar':'Confirm your email to sign in');
     else if(/Invalid login credentials/i.test(msg)) showToast(isPT?'Email ou senha incorretos':'Wrong email or password');
     else showToast(msg|| (isPT?'Falha no login':'Auth failed'));
+  }finally{
+    authBusy=false;
+    btn.disabled=false;
+    btn.textContent=mode==='login'?(isPT?'Entrar':'Sign in'):(isPT?'Criar conta':'Create account');
   }
-  btn.disabled=false;
-  btn.textContent=mode==='login'?(isPT?'Entrar':'Sign in'):(isPT?'Criar conta':'Create account');
 }
 async function loginUser(user, session){
   currentUser=user;
+  currentSession=session||currentSession||null;
   localStorage.setItem('uh-user',JSON.stringify(user));
   await ensureProfile(session&&session.user?session.user:{id:user.id,email:user.email,user_metadata:{full_name:user.name,avatar_url:user.avatar_url||''}});
   const ud=JSON.parse(localStorage.getItem(`uh-data-${user.email}`)||'{}');
@@ -914,22 +915,42 @@ async function loginUser(user, session){
   renderHist();renderRefs();renderCal();
   updAuthUI();
   await loadCloudState();
-  await refreshUsage();
   updAuthUI();
 }
 async function logout(){
-  await saveCloudState(true);
-  var s=initSupa();if(s)await s.auth.signOut();
-  persistLocalState();
-  currentUser=null;
-  profile=null;
-  cloudStateLoaded=false;
-  usageState={day_key:usageDayKey(),requests_today:0};
-  localStorage.removeItem('uh-user');
-  updAuthUI();
-  showToast(lang==='pt'?'Saiu com sucesso':'Signed out');
+  if(authBusy) return;
+  authBusy=true;
+  try{
+    await saveCloudState(true);
+    var s=initSupa();if(s){const out=await s.auth.signOut(); if(out&&out.error) throw out.error;}
+    persistLocalState();
+    currentUser=null;
+    currentSession=null;
+    profile=null;
+    cloudStateLoaded=false;
+    localStorage.removeItem('uh-user');
+    updAuthUI();
+    showToast(lang==='pt'?'Saiu com sucesso':'Signed out');
+  }catch(err){
+    console.error('logout error:',err);
+    showToast((err&&err.message)|| (lang==='pt'?'Erro ao sair':'Error signing out'));
+  }finally{
+    authBusy=false;
+  }
 }
-async function loginGoogle(){var s=initSupa();if(!s){showToast('Carregando...');return;}await s.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+window.location.pathname}});}
+async function loginGoogle(){
+  if(authBusy) return;
+  authBusy=true;
+  try{
+    var s=initSupa();if(!s){showToast('Carregando...');return;}
+    const out=await s.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+window.location.pathname}});
+    if(out&&out.error) throw out.error;
+  }catch(err){
+    console.error('loginGoogle error:',err);
+    showToast((err&&err.message)||'Erro no login com Google');
+    authBusy=false;
+  }
+}await s.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+window.location.pathname}});}
 function updAuthUI(){
   const loginBtn=document.getElementById('btn-login'),userChip=document.getElementById('user-chip');
   const userAvatar=document.getElementById('user-avatar'),userName=document.getElementById('user-name');
@@ -1514,35 +1535,46 @@ window.addEventListener('error', e => {
 // Auto-apply saved theme
 const savedTheme=localStorage.getItem('uh-theme');if(savedTheme){setTheme(savedTheme)}else if(window.matchMedia("(prefers-color-scheme: dark)").matches){setTheme("dark")}
 // Supabase auth — aguarda SDK carregar
-async function _startSupaAuth(){
+async function initAuth(){
+  if(authInitialized) return;
+  authInitialized=true;
   var s=initSupa();
-  if(!s)return;
+  if(!s) return;
   try{
     var r=await s.auth.getSession();
-    var session=r&&r.data&&r.data.session;
+    var session=r&&r.data&&r.data.session?r.data.session:null;
+    currentSession=session||null;
     if(session){
+      cloudStateLoaded=false;
       await loginUser(userFromSession(session), session);
     }else{
+      currentUser=null;
+      currentSession=null;
       updAuthUI();
     }
-  }catch(_){ updAuthUI(); }
-  s.auth.onAuthStateChange(async function(event,session){
+  }catch(err){
+    console.error('initAuth error:',err);
+    updAuthUI();
+  }
+  var result=s.auth.onAuthStateChange(async function(event,session){
+    currentSession=session||null;
     if(session&&(event==='SIGNED_IN'||event==='TOKEN_REFRESHED'||event==='INITIAL_SESSION'||event==='USER_UPDATED')){
       cloudStateLoaded=false;
       await loginUser(userFromSession(session), session);
       closeLoginModal();
-    }
-    if(event==='SIGNED_OUT'){
+    }else if(event==='SIGNED_OUT'){
       currentUser=null;
+      currentSession=null;
       profile=null;
       cloudStateLoaded=false;
       localStorage.removeItem('uh-user');
       updAuthUI();
     }
   });
+  authSubscription=result&&result.data?result.data.subscription:null;
 }
-window._onSupaReady=function(){_startSupaAuth();};
-if(window._supaReady)_startSupaAuth();
+window._onSupaReady=async function(){initSupa();await initAuth();};
+if(window._supaReady){initSupa();initAuth();}
 
 function homeSearch(){
   const q=document.getElementById('home-search').value.trim().toLowerCase();
