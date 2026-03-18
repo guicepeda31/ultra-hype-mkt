@@ -768,7 +768,7 @@ function safeUrl(u){
   }catch(_){ return ''; }
 }
 
-function userScope(){return ((globalThis.currentUser ?? currentUser)?.email||'guest').toLowerCase()}
+function userScope(){return ((globalThis.currentUser)?.email||'guest').toLowerCase()}
 function scopedKey(base){return `${base}:${userScope()}`}
 function loadRefsState(){refs=pGet(scopedKey('uh-refs'), pGet('uh-refs', []));if(!Array.isArray(refs))refs=[]}
 function saveRefsState(){pSet(scopedKey('uh-refs'), refs);pSet('uh-refs', refs)}
@@ -908,7 +908,7 @@ async function ai(prompt,maxTokens=2000,retries=1){
 // ── AUTH & USAGE SYSTEM ──────────────────────────────────────
 const USAGE_LIMIT=10;
 const USAGE_WINDOW_HOURS=5;
-let currentUser=sGet('uh-user',null);
+globalThis.currentUser=sGet('uh-user',null);
 function getUsageWindowKey(){return Math.floor(Date.now()/(USAGE_WINDOW_HOURS*60*60*1000));}
 function getUsageData(){const raw=pGet('uh-usage',{}),windowKey=getUsageWindowKey();if(raw.windowKey!==windowKey)return{windowKey,count:0,remaining:USAGE_LIMIT,limit:USAGE_LIMIT,period:'5h'};return raw;}
 async function checkUsage(){
@@ -976,7 +976,7 @@ async function submitAuth(){
 function loginUser(user){
   // Rotaciona o session ID ao fazer login (previne session fixation)
   sRemove('uh-sid');
-  currentUser=user;
+  globalThis.currentUser=user;
   sSet('uh-user',user);
   const ud=sGet(`uh-data-${user.email}`,{});
   if(ud.hist)hist=ud.hist;
@@ -986,8 +986,8 @@ function loginUser(user){
 }
 async function logout(){
   var s=initSupa();if(s)await s.auth.signOut();
-  if(currentUser)sSet('uh-data-'+currentUser.email,{hist:hist});
-  currentUser=null;
+  if(globalThis.currentUser)sSet('uh-data-'+globalThis.currentUser.email,{hist:hist});
+  globalThis.currentUser=null;
   loadRefsState();
   loadCalendarState();
   // Limpa dados sensíveis de sessão do localStorage
@@ -1006,7 +1006,7 @@ async function loginGoogle(){var s=initSupa();if(!s){showToast('Carregando...');
 function updAuthUI(){
   const loginBtn=document.getElementById('btn-login'),userChip=document.getElementById('user-chip');
   const userAvatar=document.getElementById('user-avatar'),userName=document.getElementById('user-name');
-  if(currentUser){if(loginBtn)loginBtn.style.display='none';if(userChip)userChip.style.display='flex';if(userAvatar)userAvatar.textContent=currentUser.name[0].toUpperCase();if(userName)userName.textContent=currentUser.name.split(' ')[0];}
+  if(globalThis.currentUser){if(loginBtn)loginBtn.style.display='none';if(userChip)userChip.style.display='flex';if(userAvatar)userAvatar.textContent=globalThis.currentUser.name[0].toUpperCase();if(userName)userName.textContent=globalThis.currentUser.name.split(' ')[0];}
   else{if(loginBtn)loginBtn.style.display='flex';if(userChip)userChip.style.display='none';}
   updUsageBadge();
 }
@@ -1649,7 +1649,7 @@ function _startSupaAuth(){
   });
   s.auth.onAuthStateChange(function(event,session){
     if(event==='SIGNED_IN'&&session){loginUser({name:(session.user.user_metadata&&session.user.user_metadata.full_name)||session.user.email.split('@')[0],email:session.user.email});closeLoginModal();}
-    if(event==='SIGNED_OUT'){currentUser=null;sRemove('uh-user');updAuthUI();}
+    if(event==='SIGNED_OUT'){globalThis.currentUser=null;sRemove('uh-user');updAuthUI();}
   });
 }
 window._onSupaReady=function(){_startSupaAuth();};
