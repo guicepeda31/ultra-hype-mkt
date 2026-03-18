@@ -1,8 +1,14 @@
-const XAI_API_KEY = process.env.XAI_API_KEY;
-const XAI_MODEL = process.env.XAI_MODEL || "grok-4";
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const rawGeminiModel = process.env.GEMINI_MODEL || "";
+
+// sem mexer no Vercel: corrige automaticamente modelo antigo
+const GEMINI_MODEL =
+  !rawGeminiModel || rawGeminiModel === "gemini-1.5-flash"
+    ? "gemini-2.5-flash"
+    : rawGeminiModel;
 
 const MAX_PROMPT_CHARS = 12000;
 
@@ -138,27 +144,32 @@ Formato desejado:
 }
 
 // =========================
-// xAI / GROK
+// GROQ
 // =========================
 
-async function xaiChat(messages, temperature = 0.2, maxTokens = 2200) {
-  if (!XAI_API_KEY) {
-    throw new Error("XAI_API_KEY não configurada.");
+async function groqChat(messages, temperature = 0.2, maxTokens = 2200, jsonMode = false) {
+  if (!GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY não configurada.");
   }
 
-  const response = await fetch("https://api.x.ai/v1/chat/completions", {
+  const body = {
+    model: GROQ_MODEL,
+    temperature,
+    max_tokens: maxTokens,
+    messages,
+  };
+
+  if (jsonMode) {
+    body.response_format = { type: "json_object" };
+  }
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${XAI_API_KEY}`,
+      Authorization: `Bearer ${GROQ_API_KEY}`,
     },
-    body: JSON.stringify({
-      model: XAI_MODEL,
-      stream: false,
-      temperature,
-      max_tokens: maxTokens,
-      messages,
-    }),
+    body: JSON.stringify(body),
   });
 
   const data = await response.json().catch(() => ({}));
@@ -170,7 +181,7 @@ async function xaiChat(messages, temperature = 0.2, maxTokens = 2200) {
   }
 
   if (!response.ok) {
-    const err = new Error(data?.error?.message || "Erro na xAI");
+    const err = new Error(data?.error?.message || "Erro no Groq");
     err.status = response.status || 500;
     throw err;
   }
@@ -178,8 +189,8 @@ async function xaiChat(messages, temperature = 0.2, maxTokens = 2200) {
   return data?.choices?.[0]?.message?.content || "";
 }
 
-async function xaiGeneratePlan(prompt) {
-  const content = await xaiChat(
+async function groqGeneratePlan(prompt) {
+  const content = await groqChat(
     [
       {
         role: "system",
@@ -191,14 +202,15 @@ async function xaiGeneratePlan(prompt) {
       },
     ],
     0.2,
-    2200
+    2200,
+    true
   );
 
   return safeParseJson(content);
 }
 
-async function xaiGenerateCalendar(plan, extraContext) {
-  const content = await xaiChat(
+async function groqGenerateCalendar(plan, extraContext) {
+  const content = await groqChat(
     [
       {
         role: "system",
@@ -210,14 +222,15 @@ async function xaiGenerateCalendar(plan, extraContext) {
       },
     ],
     0.2,
-    2600
+    2600,
+    true
   );
 
   return safeParseJson(content);
 }
 
-async function xaiGenerateText(prompt, maxTokens = 2000) {
-  return xaiChat(
+async function groqGenerateText(prompt, maxTokens = 2000) {
+  return groqChat(
     [
       {
         role: "system",
@@ -229,7 +242,8 @@ async function xaiGenerateText(prompt, maxTokens = 2000) {
       },
     ],
     0.3,
-    maxTokens
+    maxTokens,
+    false
   );
 }
 
@@ -393,23 +407,22 @@ async function geminiGenerateText(prompt) {
 
 async function createPlan(userInput) {
   const debug = [];
-  const prompt = buildPlanPrompt(userInput);
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const plan = await xaiGeneratePlan(userInput);
+      const plan = await groqGeneratePlan(userInput);
       if (isValidPlan(plan)) {
         return {
           ok: true,
-          provider: "xai",
-          mode: "xai_json_prompt",
+          provider: "groq",
+          mode: "groq_json_mode",
           data: plan,
           debug,
         };
       }
-      debug.push(`xai attempt ${attempt}: estrutura inválida`);
+      debug.push(`groq attempt ${attempt}: estrutura inválida`);
     } catch (error) {
-      debug.push(`xai attempt ${attempt}: ${error.message}`);
+      debug.push(`groq attempt ${attempt}: ${error.message}`);
     }
   }
 
@@ -432,8 +445,8 @@ async function createPlan(userInput) {
   }
 
   try {
-    const rawText = XAI_API_KEY
-      ? await xaiGenerateText(
+    const rawText = GROQ_API_KEY
+      ? await groqGenerateText(
           `Crie um planejamento de marketing em texto claro e organizado.\n\nEntrada:\n"""${userInput}"""`
         )
       : await geminiGenerateText(
@@ -442,7 +455,7 @@ async function createPlan(userInput) {
 
     return {
       ok: false,
-      provider: XAI_API_KEY ? "xai" : "gemini",
+      provider: GROQ_API_KEY ? "groq" : "gemini",
       mode: "text_fallback",
       error: "A IA não devolveu JSON válido para o planejamento.",
       fallback_text:
@@ -464,23 +477,22 @@ async function createPlan(userInput) {
 
 async function createCalendar(plan, extraContext = "") {
   const debug = [];
-  const prompt = buildCalendarPrompt(plan, extraContext);
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const calendar = await xaiGenerateCalendar(plan, extraContext);
+      const calendar = await groqGenerateCalendar(plan, extraContext);
       if (isValidCalendar(calendar)) {
         return {
           ok: true,
-          provider: "xai",
-          mode: "xai_json_prompt",
+          provider: "groq",
+          mode: "groq_json_mode",
           data: calendar,
           debug,
         };
       }
-      debug.push(`xai attempt ${attempt}: estrutura inválida`);
+      debug.push(`groq attempt ${attempt}: estrutura inválida`);
     } catch (error) {
-      debug.push(`xai attempt ${attempt}: ${error.message}`);
+      debug.push(`groq attempt ${attempt}: ${error.message}`);
     }
   }
 
@@ -503,8 +515,8 @@ async function createCalendar(plan, extraContext = "") {
   }
 
   try {
-    const rawText = XAI_API_KEY
-      ? await xaiGenerateText(
+    const rawText = GROQ_API_KEY
+      ? await groqGenerateText(
           `Crie um calendário editorial em texto claro e organizado com base neste planejamento:\n\n${JSON.stringify(plan, null, 2)}`,
           2600
         )
@@ -514,7 +526,7 @@ async function createCalendar(plan, extraContext = "") {
 
     return {
       ok: false,
-      provider: XAI_API_KEY ? "xai" : "gemini",
+      provider: GROQ_API_KEY ? "groq" : "gemini",
       mode: "text_fallback",
       error: "A IA não devolveu JSON válido para o calendário editorial.",
       fallback_text:
@@ -548,12 +560,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    if (!XAI_API_KEY && !GEMINI_API_KEY) {
+    if (!GROQ_API_KEY && !GEMINI_API_KEY) {
       return send(
         res,
         {
           ok: false,
-          error: "Configure pelo menos XAI_API_KEY ou GEMINI_API_KEY.",
+          error: "Configure pelo menos GROQ_API_KEY ou GEMINI_API_KEY.",
         },
         500
       );
@@ -573,13 +585,13 @@ export default async function handler(req, res) {
       const maxTokens = Number(body.maxTokens || 2000);
 
       try {
-        const text = await xaiGenerateText(prompt, maxTokens);
+        const text = await groqGenerateText(prompt, maxTokens);
         return send(res, {
           ok: true,
-          provider: "xai",
+          provider: "groq",
           text,
         });
-      } catch (xaiError) {
+      } catch (groqError) {
         try {
           const text = await geminiGenerateText(prompt);
           return send(res, {
@@ -589,14 +601,14 @@ export default async function handler(req, res) {
           });
         } catch (geminiError) {
           const status =
-            xaiError?.status === 429 || geminiError?.status === 429 ? 429 : 500;
+            groqError?.status === 429 || geminiError?.status === 429 ? 429 : 500;
 
           return send(
             res,
             {
               ok: false,
-              error: `Falha xAI: ${xaiError.message} | Falha Gemini: ${geminiError.message}`,
-              details: `Falha xAI: ${xaiError.message} | Falha Gemini: ${geminiError.message}`,
+              error: `Falha Groq: ${groqError.message} | Falha Gemini: ${geminiError.message}`,
+              details: `Falha Groq: ${groqError.message} | Falha Gemini: ${geminiError.message}`,
             },
             status
           );
