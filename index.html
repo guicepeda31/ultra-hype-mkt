@@ -768,7 +768,7 @@ function safeUrl(u){
   }catch(_){ return ''; }
 }
 
-function userScope(){return (currentUser?.email||'guest').toLowerCase()}
+function userScope(){return ((globalThis.currentUser ?? currentUser)?.email||'guest').toLowerCase()}
 function scopedKey(base){return `${base}:${userScope()}`}
 function loadRefsState(){refs=pGet(scopedKey('uh-refs'), pGet('uh-refs', []));if(!Array.isArray(refs))refs=[]}
 function saveRefsState(){pSet(scopedKey('uh-refs'), refs);pSet('uh-refs', refs)}
