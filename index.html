@@ -1291,9 +1291,7 @@ async function lerArq(input){
         const page=await pdf.getPage(i);
         const content=await page.getTextContent();
         const pageText=content.items.map(it=>it.str).join(' ');
-        txt += '
-
-' + pageText;
+        txt += '\\n\\n' + pageText;
         if(txt.length>12000) break;
       }
       ta.value=(txt||'').trim().slice(0,12000);
