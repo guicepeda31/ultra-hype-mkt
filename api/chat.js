@@ -4,11 +4,16 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const geminiApiKey = process.env.GEMINI_API_KEY;
-const grokApiKey = process.env.GROK_API_KEY;
+const grokApiKey = process.env.GROQ_API_KEY || process.env.GROK_API_KEY;
+
+if (!supabaseUrl) throw new Error('SUPABASE_URL não configurada');
+if (!supabaseAnonKey) throw new Error('SUPABASE_ANON_KEY não configurada');
+if (!supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada');
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 const DAILY_LIMIT = 30;
+const MIN_INTERVAL_MS = 4000;
 
 function getTodayKey() {
   const now = new Date();
@@ -83,6 +88,34 @@ async function upsertUsage(userId, dayKey, count) {
   if (error) throw error;
 }
 
+async function getRateLimit(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('user_rate_limits')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function touchRateLimit(userId) {
+  const now = new Date().toISOString();
+
+  const { error } = await supabaseAdmin
+    .from('user_rate_limits')
+    .upsert(
+      {
+        user_id: userId,
+        last_request_at: now,
+        updated_at: now
+      },
+      { onConflict: 'user_id' }
+    );
+
+  if (error) throw error;
+}
+
 async function callGemini(prompt) {
   if (!geminiApiKey) throw new Error('GEMINI_API_KEY ausente');
 
@@ -114,7 +147,7 @@ async function callGemini(prompt) {
 }
 
 async function callGrok(prompt) {
-  if (!grokApiKey) throw new Error('GROK_API_KEY ausente');
+  if (!grokApiKey) throw new Error('GROK/GROQ API key ausente');
 
   const res = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
@@ -154,6 +187,7 @@ export default async function handler(req, res) {
 
   try {
     const user = await getUserFromBearer(req);
+
     if (!user) {
       return res.status(401).json({ error: 'Não autenticado' });
     }
@@ -165,17 +199,33 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Prompt obrigatório' });
     }
 
+    const rate = await getRateLimit(user.id);
+
+    if (rate?.last_request_at) {
+      const elapsed = Date.now() - new Date(rate.last_request_at).getTime();
+
+      if (elapsed < MIN_INTERVAL_MS) {
+        const retryAfterMs = MIN_INTERVAL_MS - elapsed;
+        return res.status(429).json({
+          error: 'Aguarde alguns segundos antes de enviar outra solicitação.',
+          retry_after_ms: retryAfterMs
+        });
+      }
+    }
+
     const dayKey = getTodayKey();
     const usage = await getUsage(user.id, dayKey);
     const currentCount = usage?.request_count || 0;
 
     if (currentCount >= DAILY_LIMIT) {
       return res.status(429).json({
-        error: 'Limite diário atingido',
+        error: 'Limite diário atingido.',
         remaining: 0,
         limit: DAILY_LIMIT
       });
     }
+
+    await touchRateLimit(user.id);
 
     const text = await generateText(prompt);
 
