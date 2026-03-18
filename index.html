@@ -633,20 +633,47 @@ function parseJSON(raw) {
   if (!raw || typeof raw !== 'string') {
     throw new Error('Resposta vazia da IA');
   }
-  let s = raw.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
-  try { return JSON.parse(s); } catch (_) {}
-  const start = s.search(/[\[{]/);
-  const end = Math.max(s.lastIndexOf('}'), s.lastIndexOf(']'));
-  if (start !== -1 && end !== -1) {
-    try { return JSON.parse(s.slice(start, end + 1)); } catch (_) {}
-  }
+
+  let s = raw.trim();
+
+  s = s
+    .replace(/```json/gi, '```')
+    .replace(/```/g, '')
+    .trim();
+
   try {
-    return JSON.parse(
-      s
-        .replace(/,\s*([}\]])/g, '$1')
-        .replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":')
-    );
+    return JSON.parse(s);
   } catch (_) {}
+
+  const firstObj = s.indexOf('{');
+  const lastObj = s.lastIndexOf('}');
+  if (firstObj !== -1 && lastObj !== -1 && lastObj > firstObj) {
+    const candidate = s.slice(firstObj, lastObj + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch (_) {
+      s = candidate;
+    }
+  }
+
+  let repaired = s
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\t/g, ' ')
+    .replace(/\r/g, ' ')
+    .replace(/,\s*([}\]])/g, '$1');
+
+  try {
+    return JSON.parse(repaired);
+  } catch (_) {}
+
+  repaired = repaired.replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
+
+  try {
+    return JSON.parse(repaired);
+  } catch (_) {}
+
+  console.error('parseJSON failed. Raw response:', raw);
   throw new Error('JSON parse failed');
 }
 async function ai(prompt,maxTokens=2000){
@@ -1014,14 +1041,68 @@ async function buscarTrends(){
   sp('out-trends',`Consultando ${fontes}…`);
 
   const p=`Você é um analista de cultura digital e tendências para o mercado brasileiro.
+
+Tarefa:
 Analise trends para o tema "${tema}" com base nas fontes: ${fontes}.
-Retorne APENAS JSON válido sem markdown:
-{"resumo":"2 frases factuais sobre o momento cultural deste tema no Brasil","now":[{"titulo":"","contexto":"","plataformas":"","tom":"positivo|neutro|negativo","fonte":"Wikipedia Trending|HackerNews|Google News|DuckDuckGo News|Reddit","query_busca":"","score":82,"credibilidade":"alta|media"}],"emerging":[{"titulo":"","contexto":"","plataformas":"","tom":"","fonte":"","query_busca":"","score":65,"credibilidade":""}],"evergreen":[{"titulo":"","contexto":"","plataformas":"","tom":"","fonte":"","query_busca":"","score":52,"credibilidade":""}]}
-3 itens por lista. score=oportunidade 0-100. Factual, Brasil.`;
+
+Regras obrigatórias:
+- Responda com APENAS um JSON válido.
+- Não use markdown.
+- Não use bloco \`\`\`.
+- Não escreva explicações antes ou depois.
+- Não inclua comentários.
+- Comece com { e termine com }.
+- Preencha todos os campos com strings válidas.
+- Retorne exatamente 3 itens em "now", 3 em "emerging" e 3 em "evergreen".
+
+Formato exato:
+{
+  "resumo": "2 frases factuais sobre o momento cultural deste tema no Brasil",
+  "now": [
+    {
+      "titulo": "",
+      "contexto": "",
+      "plataformas": "",
+      "tom": "positivo",
+      "fonte": "Google News",
+      "query_busca": "",
+      "score": 82,
+      "credibilidade": "alta"
+    }
+  ],
+  "emerging": [
+    {
+      "titulo": "",
+      "contexto": "",
+      "plataformas": "",
+      "tom": "neutro",
+      "fonte": "Reddit",
+      "query_busca": "",
+      "score": 65,
+      "credibilidade": "media"
+    }
+  ],
+  "evergreen": [
+    {
+      "titulo": "",
+      "contexto": "",
+      "plataformas": "",
+      "tom": "positivo",
+      "fonte": "Wikipedia Trending",
+      "query_busca": "",
+      "score": 52,
+      "credibilidade": "alta"
+    }
+  ]
+}`;
+
+  let raw='';
 
   try{
-    const raw=await ai(p);
+    raw=await ai(p);
     if(!raw) throw new Error('Resposta vazia da IA');
+
+    console.log('RAW TRENDS RESPONSE:', raw);
 
     const d=parseJSON(raw);
     S.trends=d;
@@ -1031,6 +1112,7 @@ Retorne APENAS JSON válido sem markdown:
     updCtx();
   }catch(e){
     console.error('buscarTrends error:',e);
+    console.log('RAW TRENDS RESPONSE FULL:', raw);
     errC('out-trends',e?.message||'Falha na análise.');
   }finally{
     btn.disabled=false;
@@ -1058,9 +1140,13 @@ Trends: ${JSON.stringify(trends.map(t=>({titulo:t.titulo,contexto:t.ctx,categori
 JSON sem markdown:
 {"posicionamento":{"big_idea":"","insight_central":"","territorio_criativo":"","publico_primario":"","publico_secundario":"","tom_de_voz":""},"fases":[{"fase":"Fase 1","periodo":"Semanas 1-2","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]},{"fase":"Fase 2","periodo":"Semanas 3-5","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]},{"fase":"Fase 3","periodo":"Semanas 6-8","titulo":"","descricao":"","acoes":["","",""],"formatos":["",""]}],"canais":[{"canal":"","prioridade":"alta|media|baixa","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""},{"canal":"","prioridade":"","tipo_conteudo":"","frequencia":""}],"kpis":[{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""},{"metrica":"","meta":"","periodo":""}],"riscos":[{"risco":"","impacto":"alto|medio|baixo","mitigacao":""},{"risco":"","impacto":"","mitigacao":""},{"risco":"","impacto":"","mitigacao":""}],"proximos_passos":["","","","",""]}`;
 
+  let raw='';
+
   try{
-    const raw=await ai(p,2500);
+    raw=await ai(p,2500);
     if(!raw) throw new Error('Resposta vazia da IA');
+
+    console.log('RAW IRPARAPLANO RESPONSE:', raw);
 
     const d=parseJSON(raw);
     S.plano=d;
@@ -1069,6 +1155,7 @@ JSON sem markdown:
     gerarEvCal(d);
   }catch(e){
     console.error('irParaPlano error:',e);
+    console.log('RAW IRPARAPLANO RESPONSE FULL:', raw);
     errC('out-plano',e?.message||'Falha.');
   }
 }
@@ -1085,13 +1172,40 @@ async function gerarIdeias(){
   btn.textContent='Gerando…';
   sp('out-ideias','Criando conceitos…');
 
-  const p=`Diretor criativo top Brasil. 3 conceitos distintos para: "${tema}".
-JSON:{"ideias":[{"titulo":"","tagline":"","descricao":"","nivel":"safe|bold|disruptivo","plataforma":"","janela":"","copys":["","",""],"referencias":["",""]}]}
-Brasil, muito diferentes entre si.`;
+  const p=`Diretor criativo top Brasil.
+
+Crie 3 conceitos muito diferentes entre si para: "${tema}".
+
+Regras obrigatórias:
+- Responda com APENAS JSON válido.
+- Não use markdown.
+- Não escreva texto fora do JSON.
+- Comece com { e termine com }.
+- Retorne exatamente 3 itens em "ideias".
+
+Formato exato:
+{
+  "ideias": [
+    {
+      "titulo": "",
+      "tagline": "",
+      "descricao": "",
+      "nivel": "safe",
+      "plataforma": "",
+      "janela": "",
+      "copys": ["", "", ""],
+      "referencias": ["", ""]
+    }
+  ]
+}`;
+
+  let raw='';
 
   try{
-    const raw=await ai(p);
+    raw=await ai(p);
     if(!raw) throw new Error('Resposta vazia da IA');
+
+    console.log('RAW GERARIDEIAS RESPONSE:', raw);
 
     const d=parseJSON(raw);
     S.ideias=d.ideias;
@@ -1101,6 +1215,7 @@ Brasil, muito diferentes entre si.`;
     updCtx();
   }catch(e){
     console.error('gerarIdeias error:',e);
+    console.log('RAW GERARIDEIAS RESPONSE FULL:', raw);
     errC('out-ideias',e?.message||'Erro.');
   }finally{
     btn.disabled=false;
@@ -1121,17 +1236,46 @@ async function analisarBriefing(){
   btn.textContent='Analisando…';
   sp('out-briefing','Extraindo insights…');
 
-  const p=`Estrategista de marketing. Briefing: "${texto}"
-JSON:{"produto":"","publico":"","tom":"","objetivos":["",""],"restricoes":[""],"trends_relevantes":[{"trend":"","fit_score":85,"justificativa":""},{"trend":"","fit_score":72,"justificativa":""},{"trend":"","fit_score":60,"justificativa":""}],"urgencia":7,"oportunidade":""}`;
+  const p=`Estrategista de marketing.
+
+Analise este briefing:
+"${texto}"
+
+Regras obrigatórias:
+- Responda com APENAS JSON válido.
+- Não use markdown.
+- Não escreva nada antes ou depois do JSON.
+- Comece com { e termine com }.
+
+Formato exato:
+{
+  "produto": "",
+  "publico": "",
+  "tom": "",
+  "objetivos": ["", ""],
+  "restricoes": [""],
+  "trends_relevantes": [
+    {"trend": "", "fit_score": 85, "justificativa": ""},
+    {"trend": "", "fit_score": 72, "justificativa": ""},
+    {"trend": "", "fit_score": 60, "justificativa": ""}
+  ],
+  "urgencia": 7,
+  "oportunidade": ""
+}`;
+
+  let raw='';
 
   try{
-    const raw=await ai(p);
+    raw=await ai(p);
     if(!raw) throw new Error('Resposta vazia da IA');
+
+    console.log('RAW ANALISARBRIEFING RESPONSE:', raw);
 
     const d=parseJSON(raw);
     renderBriefing(d);
   }catch(e){
     console.error('briefing error:',e);
+    console.log('RAW ANALISARBRIEFING RESPONSE FULL:', raw);
     errC('out-briefing',e?.message||'Erro.');
   }finally{
     btn.disabled=false;
@@ -1149,13 +1293,47 @@ async function gerarMoodboard(){
   btn.textContent='Criando…';
   sp('out-mood','Montando direção visual…');
 
-  const p=`Diretor de arte brasileiro. Moodboard para: "${tema}".
-JSON:{"conceito_visual":"","paleta":[{"hex":"#2D4A3E","nome":"","uso":""},{"hex":"#F5E6D0","nome":"","uso":""},{"hex":"#C8453A","nome":"","uso":""},{"hex":"#1A1A2E","nome":"","uso":""},{"hex":"#E8C547","nome":"","uso":""}],"tipografias":[{"nome":"","estilo":"display|corpo","descricao":""},{"nome":"","estilo":"","descricao":""}],"texturas":["","",""],"referencias":[{"titulo":"","tipo":"campanha|filme|artista|movimento","descricao":""},{"titulo":"","tipo":"","descricao":""},{"titulo":"","tipo":"","descricao":""}],"palavras_visuais":["","","","","",""],"evitar":["",""]}
-Cores reais. Ousado.`;
+  const p=`Diretor de arte brasileiro.
+
+Crie um moodboard para: "${tema}".
+
+Regras obrigatórias:
+- Responda com APENAS JSON válido.
+- Não use markdown.
+- Não escreva nada antes ou depois.
+- Comece com { e termine com }.
+
+Formato exato:
+{
+  "conceito_visual": "",
+  "paleta": [
+    {"hex":"#2D4A3E","nome":"","uso":""},
+    {"hex":"#F5E6D0","nome":"","uso":""},
+    {"hex":"#C8453A","nome":"","uso":""},
+    {"hex":"#1A1A2E","nome":"","uso":""},
+    {"hex":"#E8C547","nome":"","uso":""}
+  ],
+  "tipografias": [
+    {"nome":"","estilo":"display","descricao":""},
+    {"nome":"","estilo":"corpo","descricao":""}
+  ],
+  "texturas": ["","",""],
+  "referencias": [
+    {"titulo":"","tipo":"campanha","descricao":""},
+    {"titulo":"","tipo":"filme","descricao":""},
+    {"titulo":"","tipo":"artista","descricao":""}
+  ],
+  "palavras_visuais": ["","","","","",""],
+  "evitar": ["",""]
+}`;
+
+  let raw='';
 
   try{
-    const raw=await ai(p);
+    raw=await ai(p);
     if(!raw) throw new Error('Resposta vazia da IA');
+
+    console.log('RAW GERARMOODBOARD RESPONSE:', raw);
 
     const d=parseJSON(raw);
     S.moodboard=d;
@@ -1164,6 +1342,7 @@ Cores reais. Ousado.`;
     updCtx();
   }catch(e){
     console.error('gerarMoodboard error:',e);
+    console.log('RAW GERARMOODBOARD RESPONSE FULL:', raw);
     errC('out-mood',e?.message||'Erro.');
   }finally{
     btn.disabled=false;
@@ -1192,19 +1371,50 @@ async function gerarRoteiro(){
     pitch:'pitch deck para aprovação de campanha'
   };
 
-  const p=`Redator criativo. ${tipos[curType]} para: "${tema}". Slides/cenas: ${scVal}. Formato: ${document.querySelector('.fmt-opt.on')?.textContent?.trim()||'16:9'}.
-JSON:{"tipo":"","tema":"","total":${scVal},"duracao_estimada":"","slides":[{"numero":1,"titulo":"","conteudo":"","narração":"","nota_visual":""}]}
-${scVal} itens. Brasil.`;
+  const p=`Redator criativo.
+
+Crie ${tipos[curType]} para: "${tema}".
+Slides/cenas: ${scVal}.
+Formato: ${document.querySelector('.fmt-opt.on')?.textContent?.trim()||'16:9'}.
+
+Regras obrigatórias:
+- Responda com APENAS JSON válido.
+- Não use markdown.
+- Não escreva nada antes ou depois do JSON.
+- Comece com { e termine com }.
+- Retorne exatamente ${scVal} itens em "slides".
+
+Formato exato:
+{
+  "tipo": "",
+  "tema": "",
+  "total": ${scVal},
+  "duracao_estimada": "",
+  "slides": [
+    {
+      "numero": 1,
+      "titulo": "",
+      "conteudo": "",
+      "narração": "",
+      "nota_visual": ""
+    }
+  ]
+}`;
+
+  let raw='';
 
   try{
-    const raw=await ai(p,2500);
+    raw=await ai(p,2500);
     if(!raw) throw new Error('Resposta vazia da IA');
+
+    console.log('RAW GERARROTEIRO RESPONSE:', raw);
 
     const d=parseJSON(raw);
     window._rotData=d;
     renderRoteiro(d);
   }catch(e){
     console.error('gerarRoteiro error:',e);
+    console.log('RAW GERARROTEIRO RESPONSE FULL:', raw);
     errC('out-rot',e?.message||'Erro.');
   }finally{
     btn.disabled=false;
