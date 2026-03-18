@@ -555,10 +555,9 @@ let currentUser=null;
 let profile=null;
 let cloudStateLoaded=false;
 let saveCloudTimer=null;
+const DAILY_LIMIT=30;
+let usageState={day_key:new Date().toISOString().slice(0,10),requests_today:0};
 let aiBusy=false;
-let usageRemaining=null;
-let usageLimit=30;
-let usageCooldownUntil=0;
 function initSupa(){
   try{
     if(window.supabase&&!supa){
@@ -629,70 +628,61 @@ function parseJSON(raw) {
   try{return JSON.parse(s.replace(/,\s*([}\]])/g,'$1').replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":'))}catch(_){}
   throw new Error('JSON parse failed');
 }
-async function ai(prompt,maxTokens=2000){
-  if(aiBusy){showToast(lang==='en'?'Wait for the current response to finish':'Aguarde a resposta atual terminar');return null;}
-  if(!await checkUsage()) return null;
+async function ai(prompt,maxTokens=2000,retries=1){
+  if(!(await checkUsage())) return null;
+  if(aiBusy){showToast(lang==='pt'?'Aguarde a resposta anterior terminar':'Wait for the previous response to finish');return null;}
   aiBusy=true;
   try{
-    let authHeader={};
-    try{
-      const s=initSupa();
-      if(s){
-        const { data } = await s.auth.getSession();
-        if(data?.session?.access_token){
-          authHeader={Authorization:'Bearer '+data.session.access_token};
+    for(let attempt=0;attempt<=retries;attempt++){
+      try{
+        let authHeader = {};
+        try {
+          const s = initSupa();
+          if (s) {
+            const { data } = await s.auth.getSession();
+            if (data?.session?.access_token) {
+              authHeader = { 'Authorization': 'Bearer ' + data.session.access_token };
+            }
+          }
+        } catch(_) {}
+        const res=await fetch('/api/chat',{
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json',
+            'Accept':'application/json',
+            'X-Requested-With':'XMLHttpRequest',
+            ...authHeader
+          },
+          body:JSON.stringify({prompt,maxTokens})
+        });
+        const payload=await res.json().catch(()=>({}));
+        if(!res.ok){
+          if(res.status===429){
+            if(payload&&payload.code==='daily_limit_exceeded'){
+              usageState={day_key:new Date().toISOString().slice(0,10),requests_today:DAILY_LIMIT};
+              updateUsageBadge();
+              showUsageModal('limit');
+              return null;
+            }
+            if(attempt<retries){
+              await new Promise(r=>setTimeout(r,2200*(attempt+1)));
+              continue;
+            }
+            showToast(lang==='pt'?'Muita demanda agora. Tente novamente em alguns segundos.':'High demand right now. Try again in a few seconds.');
+            return null;
+          }
+          throw new Error(`API ${res.status}`);
         }
+        const text=payload.text;
+        if(!text) throw new Error('Empty response');
+        incrementUsage(typeof payload.requests_today==='number'?payload.requests_today:null);
+        return text;
+      }catch(e){
+        if(attempt===retries) throw e;
+        await new Promise(r=>setTimeout(r,1200*(attempt+1)));
       }
-    }catch(_){ }
-    const res=await fetch('/api/chat',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Accept':'application/json',
-        'X-Requested-With':'XMLHttpRequest',
-        ...authHeader
-      },
-      body:JSON.stringify({prompt,maxTokens})
-    });
-
-    if(res.status===401){
-      showToast(lang==='en'?'Sign in to use AI':'Faça login para usar a IA');
-      showLoginModal('login');
-      return null;
     }
-
-    if(res.status===429){
-      const data=await res.json().catch(()=>({}));
-      if(data?.retry_after_ms){
-        usageCooldownUntil=Date.now()+Number(data.retry_after_ms||0);
-        updateUsageBadge();
-        showToast((lang==='en'?'Wait ':'Aguarde ')+Math.max(1,Math.ceil((data.retry_after_ms||0)/1000))+'s');
-      }else{
-        if(typeof data?.remaining==='number') usageRemaining=data.remaining;
-        if(typeof data?.limit==='number') usageLimit=data.limit;
-        updateUsageBadge();
-        showToast(data?.error || (lang==='en'?'Daily limit reached':'Limite diário atingido'));
-      }
-      return null;
-    }
-
-    if(!res.ok){
-      const e=await res.json().catch(()=>({}));
-      throw new Error(e?.details||e?.error||`API ${res.status}`);
-    }
-
-    const data=await res.json();
-    if(typeof data?.remaining==='number') usageRemaining=data.remaining;
-    if(typeof data?.limit==='number') usageLimit=data.limit;
-    usageCooldownUntil=Date.now()+4000;
-    updateUsageBadge();
-    const text=data?.text;
-    if(!text) throw new Error('Empty response');
-    return text;
-  }catch(e){
-    showToast(lang==='en'?'Error generating response':'Erro ao gerar resposta');
-    throw e;
-  }finally{
+  } finally {
     aiBusy=false;
   }
 }
@@ -784,56 +774,88 @@ async function saveCloudState(force=false){
   if(force) return run();
   saveCloudTimer=setTimeout(run,700);
 }
+function usageDayKey(){ return new Date().toISOString().slice(0,10); }
+async function refreshUsage(){
+  const badge=document.getElementById('usage-badge');
+  if(!badge) return;
+  if(!currentUser){
+    usageState={day_key:usageDayKey(),requests_today:0};
+    updateUsageBadge();
+    return;
+  }
+  const s=initSupa(); if(!s){ updateUsageBadge(); return; }
+  try{
+    const { data, error } = await s.from('user_usage').select('day_key,requests_today').eq('id',currentUser.id).maybeSingle();
+    if(error) throw error;
+    if(data && data.day_key===usageDayKey()){
+      usageState={day_key:data.day_key,requests_today:Number(data.requests_today||0)};
+    }else{
+      usageState={day_key:usageDayKey(),requests_today:0};
+    }
+  }catch(_){
+    usageState={day_key:usageDayKey(),requests_today:0};
+  }
+  updateUsageBadge();
+}
 function updateUsageBadge(){
   const badge=document.getElementById('usage-badge');
   if(!badge) return;
-  const now=Date.now();
-  if(usageCooldownUntil && usageCooldownUntil>now){
-    const secs=Math.max(1,Math.ceil((usageCooldownUntil-now)/1000));
-    badge.textContent=(lang==='en'?'Cooldown: ':'Aguarde: ')+secs+'s';
-    badge.style.color='var(--amber)';
-    return;
-  }
   if(currentUser){
-    if(typeof usageRemaining==='number'){
-      badge.textContent=(lang==='en'?'AI left today: ':'IA restante hoje: ')+usageRemaining+'/'+usageLimit;
-      badge.style.color=usageRemaining>5?'var(--green)':(usageRemaining>0?'var(--amber)':'var(--red)');
-    }else{
-      badge.textContent=(lang==='en'?'Cloud save on':'Salvamento em nuvem ativo');
-      badge.style.color='var(--green)';
-    }
+    const left=Math.max(0,DAILY_LIMIT-Number(usageState.requests_today||0));
+    badge.textContent=lang==='pt'
+      ? `${left}/30 IA restantes hoje`
+      : `${left}/30 AI requests left today`;
+    badge.style.color=left<=3?'var(--red)':left<=10?'var(--amber)':'var(--green)';
   }else{
-    badge.textContent=(lang==='en'?'Sign in to use AI':'Faça login para usar a IA');
+    badge.textContent=lang==='pt'
+      ? 'Entre para usar até 30 IA/dia'
+      : 'Sign in to use up to 30 AI/day';
     badge.style.color='var(--t3)';
   }
 }
-function showUsageModal(){
-  document.getElementById('usage-modal-msg').innerHTML=lang==='pt'
-    ?`Cada conta pode fazer <strong>30 requisições de IA por dia</strong>.<br><br>Também existe um pequeno intervalo entre envios para evitar spam e proteger o consumo das APIs.`
-    :`Each account can make <strong>30 AI requests per day</strong>.<br><br>There is also a short cooldown between requests to prevent spam and protect API usage.`;
+function showUsageModal(kind){
+  const isPT=lang==='pt';
+  let html='';
+  if(!currentUser){
+    html=isPT
+      ? `Para controlar custo, a IA fica disponível para <strong>usuários logados</strong>.<br><br>Entre ou crie sua conta para usar até <strong>30 requisições por dia</strong>.`
+      : `To control cost, AI is available for <strong>signed-in users</strong>.<br><br>Sign in or create your account to use up to <strong>30 requests per day</strong>.`;
+  }else{
+    html=isPT
+      ? `Você atingiu o limite de <strong>30 requisições de IA hoje</strong>.<br><br>Seu acesso renova automaticamente amanhã.`
+      : `You reached the limit of <strong>30 AI requests today</strong>.<br><br>Your access renews automatically tomorrow.`;
+  }
+  document.getElementById('usage-modal-msg').innerHTML=html;
   document.getElementById('usage-modal').style.display='block';
 }
 async function checkUsage(){
-  if(!currentUser){
-    showToast(lang==='en'?'Sign in to use AI':'Faça login para usar a IA');
-    showLoginModal('login');
-    return false;
-  }
-  const now=Date.now();
-  if(usageCooldownUntil && usageCooldownUntil>now){
-    showToast((lang==='en'?'Wait ':'Aguarde ')+Math.max(1,Math.ceil((usageCooldownUntil-now)/1000))+'s');
-    return false;
-  }
-  if(typeof usageRemaining==='number' && usageRemaining<=0){
-    showUsageModal();
-    return false;
-  }
+  if(!currentUser){ showUsageModal('login'); return false; }
+  if(usageState.day_key!==usageDayKey()) usageState={day_key:usageDayKey(),requests_today:0};
+  if(Number(usageState.requests_today||0)>=DAILY_LIMIT){ showUsageModal('limit'); return false; }
+  const s=initSupa(); if(!s) return true;
+  try{
+    const { data, error } = await s.from('user_usage').select('day_key,requests_today').eq('id',currentUser.id).maybeSingle();
+    if(error) throw error;
+    if(data && data.day_key===usageDayKey()){
+      usageState={day_key:data.day_key,requests_today:Number(data.requests_today||0)};
+    }else{
+      usageState={day_key:usageDayKey(),requests_today:0};
+    }
+  }catch(_){}
+  updateUsageBadge();
+  if(Number(usageState.requests_today||0)>=DAILY_LIMIT){ showUsageModal('limit'); return false; }
   return true;
 }
-async function incrementUsage(){ updateUsageBadge(); }
-function getUsageLeft(){ return typeof usageRemaining==='number'?usageRemaining:Infinity; }
+function incrementUsage(serverCount=null){
+  if(typeof serverCount==='number'){
+    usageState={day_key:usageDayKey(),requests_today:serverCount};
+  }else{
+    usageState={day_key:usageDayKey(),requests_today:Number(usageState.requests_today||0)+1};
+  }
+  updateUsageBadge();
+}
+function getUsageLeft(){ return Math.max(0,DAILY_LIMIT-Number(usageState.requests_today||0)); }
 function updUsageBadge(){ updateUsageBadge(); }
-setInterval(()=>{ if(usageCooldownUntil) updateUsageBadge(); },1000);
 function showLoginModal(mode='login'){document.getElementById('login-modal').style.display='block';switchAuthMode(mode);}
 function closeLoginModal(){document.getElementById('login-modal').style.display='none';}
 function closeUsageModal(){document.getElementById('usage-modal').style.display='none';}
@@ -892,6 +914,7 @@ async function loginUser(user, session){
   renderHist();renderRefs();renderCal();
   updAuthUI();
   await loadCloudState();
+  await refreshUsage();
   updAuthUI();
 }
 async function logout(){
@@ -901,6 +924,7 @@ async function logout(){
   currentUser=null;
   profile=null;
   cloudStateLoaded=false;
+  usageState={day_key:usageDayKey(),requests_today:0};
   localStorage.removeItem('uh-user');
   updAuthUI();
   showToast(lang==='pt'?'Saiu com sucesso':'Signed out');
